@@ -1,0 +1,153 @@
+# ============================================================
+# hvacvibe-hub .gitignore
+# Raspberry Pi Gateway + nRF52840 Firmware + Python
+# ============================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+lib/
+lib64/
+wheels/
+pip-wheel-metadata/
+.installed.cfg
+MANIFEST
+.env
+.venv
+venv/
+env/
+ENV/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+*.ipynb
+
+# --- nRF52840 / Zephyr / Nordic SDK build artifacts ---
+build/
+*.hex
+*.elf
+*.bin
+*.map
+*.lst
+*.d
+*.o
+*.a
+*.out
+zephyr/
+.west/
+modules/
+
+# --- C/C++ ---
+*.o
+*.lo
+*.la
+*.al
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# --- CMake ---
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# --- Raspberry Pi / Linux ---
+*.pyc
+*.log
+*.pid
+*.sock
+*.swp
+*.swo
+*~
+.nfs*
+
+# --- Systemd local overrides ---
+*.service.d/
+
+# --- Config files with secrets ---
+config.local.py
+config.local.yaml
+config.local.json
+secrets.py
+secrets.yaml
+secrets.json
+*.env
+.env.*
+!.env.example
+
+# --- MQTT / credentials ---
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# --- SSH keys ---
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# --- Database / data files ---
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+*.dat
+data/
+logs/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.cproject
+.settings/
+*.code-workspace
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Windows ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Backup files ---
+*.bak
+*.orig
+*.rej
+
+# --- Nordic nRF Connect / Segger ---
+*.jdebug
+*.jdebug.user
+*.emSession
+*.uvoptx
+*.uvprojx
+Output/
+RTE/
