@@ -92,16 +92,18 @@ class SensorConnection:
             log.warning(f"{self.name} env parse: {e}")
 
     def _push(self, vib_rms, vib_peak):
-        env    = self._last_env
-        sensor = store.get_by_name(self.name)
-        rms    = vib_rms  if vib_rms  is not None else (sensor.vib_rms  if sensor else 0.0)
-        peak   = vib_peak if vib_peak is not None else (sensor.vib_peak if sensor else 0.0)
+        env  = self._last_env
+        rms  = vib_rms  if vib_rms  is not None else self._last_rms
+        peak = vib_peak if vib_peak is not None else self._last_peak
+        self._last_rms  = rms
+        self._last_peak = peak
         store.update(self.address, self.name, SensorReading(
             ts       = datetime.datetime.now(),
             vib_rms  = rms,
             vib_peak = peak,
             temp     = env.get("temp",     0.0),
             humidity = env.get("humidity", 0.0),
+            pressure = env.get("pressure", 0.0),
             battery  = 0,
             rssi     = self._last_rssi,
         ))
@@ -131,29 +133,43 @@ async def _connect_and_monitor(address, name):
 async def _discover_and_connect():
     from bleak import BleakScanner
     log.info(f"Scanning for '{BLE['device_prefix']}' devices...")
+    # known: addresses we have an active _connect_and_monitor task for
     known = set()
+
     while True:
-        # Only scan when we have no active connections
-        if not known:
-            try:
-                devices = await BleakScanner.discover(timeout=BLE["scan_interval"])
-                for d in devices:
-                    name = d.name or ""
-                    if name.lower().startswith(BLE["device_prefix"].lower()):
-                        if d.address not in known:
-                            known.add(d.address)
-                            log.info(f"Discovered {name} ({d.address})")
-                            asyncio.create_task(
-                                _connect_and_monitor(d.address, name))
-            except Exception as e:
-                log.error(f"Scan error: {e}")
-        else:
-            # Check if any known sensors dropped — rescan if all disconnected
-            sensors = store.get_all()
-            if not any(s.connected for s in sensors):
-                log.info("All sensors disconnected — rescanning...")
-                known.clear()
-        await asyncio.sleep(BLE["scan_interval"])
+        sensors     = store.get_all()
+        any_connected = any(s.connected for s in sensors)
+
+        if any_connected:
+            # All good — just check periodically
+            await asyncio.sleep(BLE["scan_interval"])
+            continue
+
+        # Nothing connected — but only rescan if no tasks are running
+        # (tasks in known are either connecting or in retry backoff)
+        if known:
+            # Tasks exist but not yet connected — give them time to retry
+            await asyncio.sleep(BLE["scan_interval"])
+            # If tasks have been running a while and still not connected,
+            # clear known so we rediscover (handles address rotation)
+            known.clear()
+            continue
+
+        # No tasks running and nothing connected — scan now
+        try:
+            log.info("Scanning...")
+            devices = await BleakScanner.discover(timeout=BLE["scan_interval"])
+            for d in devices:
+                name = d.name or ""
+                if name.lower().startswith(BLE["device_prefix"].lower()):
+                    if d.address not in known:
+                        known.add(d.address)
+                        log.info(f"Discovered {name} ({d.address})")
+                        asyncio.create_task(
+                            _connect_and_monitor(d.address, name))
+        except Exception as e:
+            log.error(f"Scan error: {e}")
+            await asyncio.sleep(2.0)
 
 
 # Simulation
@@ -184,7 +200,7 @@ def _sim_loop():
             d = sim.tick()
             store.update(info["address"], info["name"], SensorReading(
                 ts=now, vib_rms=d["vib_rms"], vib_peak=d["vib_peak"],
-                temp=d["temp"], humidity=d["humidity"],
+                temp=d["temp"], humidity=d["humidity"], pressure=0.0,
                 battery=d["battery"], rssi=d["rssi"]))
         time.sleep(1.0)
 

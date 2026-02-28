@@ -275,12 +275,13 @@ def draw_single(surf, sensor: SensorState, fonts):
 
     # Tiles
     tile_defs = [
-        ("VIB RMS",  f"{sensor.vib_rms:.3f}",  "g",   alarm_color(sensor)),
-        ("PEAK",     f"{sensor.vib_peak:.2f}",  "g",   C_YELLOW),
+        ("VIB RMS",  f"{sensor.vib_rms:.3f}",  "g",        alarm_color(sensor)),
+        ("PEAK",     f"{sensor.vib_peak:.2f}",  "g",        C_YELLOW),
         ("TEMP",     f"{sensor.temp:.1f}",      "\u00b0C", C_YELLOW),
-        ("HUMIDITY", f"{sensor.humidity:.1f}",  "%RH", C_ACCENT),
+        ("HUMIDITY", f"{sensor.humidity:.1f}",  "%RH",      C_ACCENT),
+        ("PRESSURE", f"{sensor.pressure:.0f}",  "hPa",      C_ACCENT),
     ]
-    tw = (W - 2) // 4
+    tw = (W - 2) // 5
     for i, (label, value, unit, col) in enumerate(tile_defs):
         tx = 1 + i * tw
         pygame.draw.rect(surf, C_PANEL, (tx+1, TILES_Y, tw-2, TILES_H),

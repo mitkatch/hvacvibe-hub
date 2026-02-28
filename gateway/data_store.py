@@ -21,6 +21,7 @@ class SensorReading:
     vib_peak:  float
     temp:      float
     humidity:  float
+    pressure:  float
     battery:   int
     rssi:      int
 
@@ -49,6 +50,7 @@ class SensorState:
     vib_peak:     float                   = 0.0
     temp:         float                   = 0.0
     humidity:     float                   = 0.0
+    pressure:     float                   = 0.0
     battery:      int                     = 0
     rssi:         int                     = -99
     alarm:        bool                    = False
@@ -71,6 +73,7 @@ class SensorState:
         self.vib_peak  = reading.vib_peak
         self.temp      = reading.temp
         self.humidity  = reading.humidity
+        self.pressure  = reading.pressure
         self.battery   = reading.battery
         self.rssi      = reading.rssi
         self.alarm     = reading.vib_rms >= ALARMS["vib_rms_alarm"]
@@ -111,6 +114,7 @@ class SensorState:
             "vib_peak":  self.vib_peak,
             "temp":      self.temp,
             "humidity":  self.humidity,
+            "pressure":  self.pressure,
             "battery":   self.battery,
             "rssi":      self.rssi,
             "alarm":     self.alarm,

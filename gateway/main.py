@@ -29,10 +29,6 @@ def main():
     log.info("Starting cloud sync...")
     sync_thread = cloud_sync.start()
 
-    # Brief pause to let BLE scanner populate initial data
-    log.info("Waiting for first sensor data...")
-    time.sleep(2.0)
-
     # ── Run display on main thread (pygame requires main thread) ──
     log.info("Starting display...")
     try:
