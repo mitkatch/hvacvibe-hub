@@ -21,6 +21,8 @@ import pygame
 from data_store import store, SensorState
 from config import DISPLAY, ALARMS, ON_PI
 import cloud_sync
+from screen_manager import screen_state, SCREEN_DASHBOARD, SCREEN_SENSOR, SCREEN_BALLOON
+from balloon_screen import BalloonScreen
 
 log = logging.getLogger('display')
 
@@ -502,6 +504,20 @@ def render(surf, sensors: list[SensorState], fonts):
         draw_list(surf, sensors, fonts)
 
 
+
+# ── Reset screen ──────────────────────────────────────────────
+def draw_reset(surf, fonts):
+    ft, fm = fonts["tiny"], fonts["med"]
+    fl = fonts["large"]
+    surf.fill((10, 10, 15))
+    msg = fl.render("RESETTING...", True, C_RED)
+    surf.blit(msg, (W//2 - msg.get_width()//2, H//2 - 30))
+    sub = fm.render("Clearing WiFi + BLE bonds", True, C_GREY)
+    surf.blit(sub, (W//2 - sub.get_width()//2, H//2 + 10))
+    sub2 = ft.render("Rebooting — please wait", True, C_GREY)
+    surf.blit(sub2, (W//2 - sub2.get_width()//2, H//2 + 30))
+
+
 # ── Main loop ─────────────────────────────────────────────────
 def run():
     pygame.init()
@@ -517,6 +533,8 @@ def run():
         "large": pygame.font.SysFont(DISPLAY["font_mono"], 26, bold=True),
     }
 
+    balloon = BalloonScreen(W, H)
+
     try:
         while True:
             for event in pygame.event.get():
@@ -526,7 +544,20 @@ def run():
                     return
 
             sensors = store.get_all()
-            render(screen, sensors, fonts)
+            scr     = screen_state.screen
+            sidx    = screen_state.sensor_idx
+
+            screen.fill(C_BG)
+
+            if scr == "reset":
+                draw_reset(screen, fonts)
+            elif scr == SCREEN_BALLOON:
+                balloon.draw(screen, sensors, fonts)
+            elif scr == SCREEN_SENSOR and sensors:
+                idx = min(sidx, len(sensors) - 1)
+                draw_single(screen, sensors[idx], fonts)
+            else:
+                render(screen, sensors, fonts)
 
             if ON_PI:
                 flush_to_fb(screen)
@@ -535,7 +566,6 @@ def run():
 
             clock.tick(DISPLAY["fps"])
     finally:
-        # Clear framebuffer to black on exit
         if ON_PI:
             try:
                 screen.fill((0, 0, 0))
