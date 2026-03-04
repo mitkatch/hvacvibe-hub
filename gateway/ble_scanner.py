@@ -33,6 +33,11 @@ SERVICE_UUID    = "12345678-1234-5678-1234-56789abcdef0"
 BURST_DATA_UUID = "12345678-1234-5678-1234-56789abcdef1"
 ENV_DATA_UUID   = "12345678-1234-5678-1234-56789abcdef2"
 
+# Active BLE clients — tracked for clean shutdown
+_active_clients = {}   # address → BleakClient
+_active_lock    = threading.Lock()
+_ble_loop       = None  # asyncio loop running in the BLE thread
+
 SAMPLES_PER_BURST = 512
 BYTES_PER_SAMPLE  = 6
 EXPECTED_BYTES    = SAMPLES_PER_BURST * BYTES_PER_SAMPLE  # 3072
@@ -117,16 +122,27 @@ async def _connect_and_monitor(address, name):
             log.info(f"Connecting {name} ({address})...")
             async with BleakClient(address, timeout=20.0) as client:
                 log.info(f"Connected: {name}")
+
+                with _active_lock:
+                    _active_clients[address] = client
+
                 await client.start_notify(BURST_DATA_UUID, conn.on_burst)
                 await client.start_notify(ENV_DATA_UUID,   conn.on_env)
                 log.info(f"{name}: subscribed to burst+env")
                 while client.is_connected:
                     await asyncio.sleep(1.0)
+
             store.set_disconnected(address)
             log.warning(f"{name} disconnected, retrying in 5s")
+        except asyncio.CancelledError:
+            log.info(f"{name}: task cancelled, cleaning up")
+            return
         except Exception as e:
             store.set_disconnected(address)
             log.warning(f"{name} error: {e}, retrying in 5s")
+        finally:
+            with _active_lock:
+                _active_clients.pop(address, None)
         await asyncio.sleep(5.0)
 
 
@@ -211,10 +227,53 @@ def start():
         t = threading.Thread(target=_sim_loop, name="ble-sim", daemon=True)
     else:
         def _run():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(_discover_and_connect())
+            global _ble_loop
+            _ble_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(_ble_loop)
+            _ble_loop.run_until_complete(_discover_and_connect())
         t = threading.Thread(target=_run, name="ble-scanner", daemon=True)
     t.start()
     log.info(f"BLE thread: {t.name}")
     return t
+
+
+async def _disconnect_all():
+    """Disconnect every active BleakClient."""
+    with _active_lock:
+        clients = list(_active_clients.items())
+
+    for address, client in clients:
+        try:
+            if client.is_connected:
+                log.info(f"Disconnecting {address}...")
+                await client.disconnect()
+                log.info(f"Disconnected {address}")
+        except Exception as e:
+            log.warning(f"Error disconnecting {address}: {e}")
+
+
+def shutdown(timeout=5.0):
+    """Clean BLE shutdown — disconnect all sensors.
+
+    Call from the main thread before exit.  Submits the
+    disconnect coroutine to the BLE event loop and waits
+    for it to complete (up to *timeout* seconds).
+    """
+    if _ble_loop is None or _ble_loop.is_closed():
+        log.debug("BLE loop not running, nothing to shut down")
+        return
+
+    with _active_lock:
+        if not _active_clients:
+            log.debug("No active BLE clients to disconnect")
+            return
+
+    log.info("BLE shutdown: disconnecting all sensors...")
+    try:
+        future = asyncio.run_coroutine_threadsafe(_disconnect_all(), _ble_loop)
+        future.result(timeout=timeout)
+        log.info("BLE shutdown complete")
+    except TimeoutError:
+        log.warning("BLE shutdown timed out after %.1fs", timeout)
+    except Exception as e:
+        log.warning(f"BLE shutdown error: {e}")

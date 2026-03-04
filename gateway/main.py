@@ -52,6 +52,10 @@ def main():
     buttons.start()
     log.info("Buttons started (BTN1=GPIO5, BTN2=GPIO26)")
 
+    # ── Handle SIGTERM (systemd stop, kill) same as Ctrl-C ─────
+    import signal
+    signal.signal(signal.SIGTERM, lambda sig, frame: sys.exit(0))
+
     # ── Run display on main thread (pygame requires main thread) ──
     log.info("Starting display...")
     try:
@@ -62,6 +66,8 @@ def main():
     except Exception as e:
         log.exception(f"Display error: {e}")
     finally:
+        log.info("Cleaning up BLE connections...")
+        ble_scanner.shutdown(timeout=5.0)
         log.info("HVAC-Vibe Gateway stopped.")
         sys.exit(0)
 

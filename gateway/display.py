@@ -22,7 +22,7 @@ from data_store import store, SensorState
 from config import DISPLAY, ALARMS, ON_PI
 import cloud_sync
 from screen_manager import screen_state, SCREEN_DASHBOARD, SCREEN_SENSOR, SCREEN_BALLOON
-from balloon_screen import BalloonScreen
+from balloon_screen_one import BalloonScreenOne
 
 log = logging.getLogger('display')
 
@@ -533,7 +533,7 @@ def run():
         "large": pygame.font.SysFont(DISPLAY["font_mono"], 26, bold=True),
     }
 
-    balloon = BalloonScreen(W, H)
+    balloon = BalloonScreenOne(W, H)
 
     try:
         while True:
@@ -552,7 +552,9 @@ def run():
             if scr == "reset":
                 draw_reset(screen, fonts)
             elif scr == SCREEN_BALLOON:
-                balloon.draw(screen, sensors, fonts)
+                s = sensors[0] if sensors else None
+                if s:
+                    balloon.draw(screen, s, fonts)
             elif scr == SCREEN_SENSOR and sensors:
                 idx = min(sidx, len(sensors) - 1)
                 draw_single(screen, sensors[idx], fonts)
