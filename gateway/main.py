@@ -5,11 +5,12 @@ Starts all subsystem threads then runs the pygame display on the main thread.
 
 Buttons:
   GPIO5  (BTN1) short press → cycle screens
-  GPIO26 (BTN2) hold 3s     → factory reset (wipe WiFi + BLE bonds, reboot)
+  GPIO26 (BTN2) hold 3s     → enter setup mode (WiFi AP + web config)
 """
 import logging
 import sys
 import time
+import threading
 
 # Configure logging before importing modules
 logging.basicConfig(
@@ -22,6 +23,13 @@ log = logging.getLogger("main")
 
 def main():
     log.info("HVAC-Vibe Gateway starting...")
+
+    # ── Boot WiFi check ────────────────────────────────────────
+    # Tests pending config (from setup page), falls back to active,
+    # or signals that setup is needed.
+    import wifi_manager
+    wifi_status = wifi_manager.run_boot_wifi_check()
+    log.info("WiFi status: %s", wifi_status)
 
     # ── Start background threads ───────────────────────────────
     import ble_scanner
@@ -42,10 +50,18 @@ def main():
         screen_manager.advance(len(sensors))
 
     def on_button2_long():
-        log.warning("RESET triggered via Button 2 long press")
-        screen_state.set("reset")
-        time.sleep(1.0)
-        _do_reset()
+        log.info("BTN2 long press — entering setup mode")
+        import setup_mode
+        if setup_mode.is_active():
+            log.warning("Setup mode already active, ignoring")
+            return
+        # Run in a thread so button handler returns immediately
+        threading.Thread(
+            target=setup_mode.enter_setup_mode,
+            args=(screen_state,),
+            name="setup-mode",
+            daemon=True,
+        ).start()
 
     buttons.on_button1(on_button1)
     buttons.on_button2_long(on_button2_long)
@@ -55,6 +71,17 @@ def main():
     # ── Handle SIGTERM (systemd stop, kill) same as Ctrl-C ─────
     import signal
     signal.signal(signal.SIGTERM, lambda sig, frame: sys.exit(0))
+
+    # ── Auto-enter setup if no WiFi configured ────────────────
+    if wifi_status == "needs_setup":
+        log.info("No WiFi config — auto-entering setup mode")
+        import setup_mode
+        threading.Thread(
+            target=setup_mode.enter_setup_mode,
+            args=(screen_state,),
+            name="setup-mode",
+            daemon=True,
+        ).start()
 
     # ── Run display on main thread (pygame requires main thread) ──
     log.info("Starting display...")
@@ -73,16 +100,14 @@ def main():
 
 
 def _do_reset():
-    """Wipe WiFi config, BLE bonds, then reboot into AP/setup mode."""
+    """Wipe WiFi config, BLE bonds, then reboot."""
     import os
     import subprocess
+    import wifi_manager
 
     log.info("Reset: clearing WiFi credentials...")
     try:
-        wifi_conf = "/home/mitkatch/gateway/wifi.conf"
-        if os.path.exists(wifi_conf):
-            os.remove(wifi_conf)
-            log.info(f"Removed {wifi_conf}")
+        wifi_manager.clear_all()
     except Exception as e:
         log.warning(f"WiFi wipe error: {e}")
 
