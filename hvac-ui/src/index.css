@@ -1,0 +1,43 @@
+/* index.css — HVAC-Vibe base styles */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg:        #12161c;
+  --panel:     #1c2230;
+  --edge:      #2d3748;
+  --accent:    #00a0dc;
+  --green:     #00c864;
+  --yellow:    #ffbe00;
+  --red:       #dc3232;
+  --warn:      #ff8c00;
+  --white:     #dce1e6;
+  --grey:      #64748b;
+  --divider:   #283040;
+  --chart-line:#00b4ff;
+  --chart-fill:#004878;
+  --now-line:  #ffdc3c;
+  --font-mono: 'Share Tech Mono', monospace;
+  --font-ui:   'Rajdhani', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--edge); border-radius: 2px; }
