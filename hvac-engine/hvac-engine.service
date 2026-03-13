@@ -1,0 +1,21 @@
+[Unit]
+Description=HVAC-Vibe Data Engine
+After=network.target mosquitto.service bluetooth.service
+Wants=mosquitto.service bluetooth.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/hvac-engine
+ExecStart=/home/pi/hvac-engine/venv/bin/python engine_main.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hvac-engine
+
+# Allow Bluetooth access
+SupplementaryGroups=bluetooth
+
+[Install]
+WantedBy=multi-user.target

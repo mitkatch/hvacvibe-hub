@@ -1,0 +1,8 @@
+The fix that made it work was editing /etc/bluetooth/main.conf:
+ini[Policy]
+AutoEnable=true
+
+[General]
+JustWorksRepairing = always
+Privacy = off
+Without this, bluez was sending a pairing/security request during GATT service discovery that the nRF52840 firmware rejected, causing immediate disconnect.
