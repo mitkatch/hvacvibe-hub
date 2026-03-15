@@ -5,7 +5,7 @@
   "wifi_password": "",
   "mqtt_broker":  "localhost",
   "mqtt_port":    1883,
-  "db_path":      "/var/lib/hvac-vibe/engine.db",
+  "db_path":      "/home/mitkatch/hvac-engine/engine.db",
   "sim_mode":     false,
   "sensors": {
     "hvac-vibe-a1-ddee01": {
