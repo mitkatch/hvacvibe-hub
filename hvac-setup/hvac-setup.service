@@ -1,0 +1,20 @@
+[Unit]
+Description=HVAC-Vibe WiFi Setup
+Before=hvac-engine.service
+After=local-fs.target
+Wants=local-fs.target
+Conflicts=hvac-pygame.service hvac-display.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+WorkingDirectory=/home/mitkatch/hvac-setup
+ExecStart=/home/mitkatch/hvac-setup/venv/bin/python setup_main.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hvac-setup
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

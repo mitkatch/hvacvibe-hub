@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>HVAC-Vibe Setup</title>
+<style>
+  :root {
+    --bg:      #0a0e1a;
+    --surface: #111827;
+    --border:  #1e2d45;
+    --blue:    #2e86de;
+    --blue2:   #54a0ff;
+    --green:   #26de81;
+    --red:     #ff4757;
+    --text:    #e8f0fe;
+    --muted:   #6b7a99;
+    --radius:  12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+    min-height: 100vh;
+    padding: 0 16px 40px;
+  }
+
+  /* Header */
+  .header {
+    padding: 28px 0 20px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: var(--blue);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .logo-text {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+
+  .logo-text span { color: var(--blue2); }
+
+  .subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Step indicator */
+  .steps {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .step {
+    width: 28px; height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+
+  .step.active { background: var(--blue); }
+  .step.done   { background: var(--green); }
+
+  /* Section label */
+  .section-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding-left: 4px;
+  }
+
+  /* Network list */
+  .network-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
+  }
+
+  .network-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 0.2s, background 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .network-item:active,
+  .network-item.selected {
+    border-color: var(--blue);
+    background: rgba(46, 134, 222, 0.08);
+  }
+
+  .signal-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 18px;
+  }
+
+  .signal-icon .bar {
+    width: 4px;
+    background: var(--muted);
+    border-radius: 1px;
+  }
+
+  .signal-icon .bar.lit { background: var(--blue2); }
+  .signal-icon .bar:nth-child(1) { height: 5px; }
+  .signal-icon .bar:nth-child(2) { height: 9px; }
+  .signal-icon .bar:nth-child(3) { height: 13px; }
+  .signal-icon .bar:nth-child(4) { height: 18px; }
+
+  .network-info { flex: 1; min-width: 0; }
+
+  .network-ssid {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+
+  .network-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .lock-icon {
+    font-size: 13px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* Password panel */
+  .password-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .password-panel.visible { display: block; }
+
+  .selected-network {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .selected-dot {
+    width: 8px; height: 8px;
+    background: var(--blue);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .selected-ssid {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--blue2);
+  }
+
+  .input-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .pw-input-wrap {
+    position: relative;
+  }
+
+  input[type="password"],
+  input[type="text"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 44px 12px 14px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus { border-color: var(--blue); }
+
+  .toggle-pw {
+    position: absolute;
+    right: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 16px; padding: 4px;
+  }
+
+  /* Connect button */
+  .btn-connect {
+    width: 100%;
+    padding: 15px;
+    background: var(--blue);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: white;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    text-transform: uppercase;
+  }
+
+  .btn-connect:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Refresh button */
+  .btn-refresh {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    margin-top: 10px;
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .btn-refresh:hover { border-color: var(--blue); color: var(--blue2); }
+
+  /* Status screens */
+  .status-screen {
+    display: none;
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .status-screen.visible { display: block; }
+
+  .status-icon {
+    font-size: 56px;
+    margin-bottom: 20px;
+    display: block;
+  }
+
+  .status-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  .status-msg {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .ip-display {
+    display: inline-block;
+    margin-top: 18px;
+    padding: 10px 20px;
+    background: rgba(46, 134, 222, 0.12);
+    border: 1px solid var(--blue);
+    border-radius: 8px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--blue2);
+    letter-spacing: 0.06em;
+  }
+
+  /* Spinner */
+  .spinner {
+    display: inline-block;
+    width: 48px; height: 48px;
+    border: 3px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 20px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--red);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+    white-space: nowrap;
+    z-index: 99;
+  }
+
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 32px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">📡</div>
+    <div class="logo-text">HVAC<span>-Vibe</span></div>
+  </div>
+  <div class="subtitle">WiFi Setup</div>
+</div>
+
+<!-- Step indicators -->
+<div class="steps">
+  <div class="step active" id="step1"></div>
+  <div class="step" id="step2"></div>
+  <div class="step" id="step3"></div>
+</div>
+
+<!-- Main panel — network selection + password -->
+<div id="main-panel">
+  <div class="section-label">Available Networks</div>
+
+  <div class="network-list" id="network-list">
+    {% if networks %}
+      {% for net in networks %}
+      <div class="network-item" onclick="selectNetwork('{{ net.ssid }}', {{ net.secure|lower }}, {{ net.signal }})">
+        <div class="signal-icon">
+          {% set bars = 1 if net.signal < -80 else (2 if net.signal < -65 else (3 if net.signal < -50 else 4)) %}
+          <div class="bar {% if bars >= 1 %}lit{% endif %}"></div>
+          <div class="bar {% if bars >= 2 %}lit{% endif %}"></div>
+          <div class="bar {% if bars >= 3 %}lit{% endif %}"></div>
+          <div class="bar {% if bars >= 4 %}lit{% endif %}"></div>
+        </div>
+        <div class="network-info">
+          <div class="network-ssid">{{ net.ssid }}</div>
+          <div class="network-meta">{{ net.signal }} dBm{% if not net.secure %} · Open network{% endif %}</div>
+        </div>
+        {% if net.secure %}<div class="lock-icon">🔒</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">No networks found.<br>Try refreshing.</div>
+    {% endif %}
+  </div>
+
+  <!-- Password panel — shown after network selection -->
+  <div class="password-panel" id="pw-panel">
+    <div class="selected-network">
+      <div class="selected-dot"></div>
+      <div class="selected-ssid" id="selected-ssid-label">—</div>
+    </div>
+    <div class="input-label">Password</div>
+    <div class="pw-input-wrap">
+      <input type="password" id="pw-input" placeholder="Enter WiFi password"
+             autocomplete="current-password" autocorrect="off" autocapitalize="none">
+      <button class="toggle-pw" onclick="togglePw()" type="button">👁</button>
+    </div>
+  </div>
+
+  <button class="btn-connect" id="btn-connect" onclick="doConnect()" disabled>
+    Connect
+  </button>
+
+  <button class="btn-refresh" onclick="window.location.reload()">
+    ↻ &nbsp;Refresh Networks
+  </button>
+</div>
+
+<!-- Connecting screen -->
+<div class="status-screen" id="connecting-screen">
+  <div class="spinner"></div>
+  <div class="status-title">Connecting...</div>
+  <div class="status-msg" id="connecting-msg">Verifying credentials</div>
+</div>
+
+<!-- Success screen -->
+<div class="status-screen" id="success-screen">
+  <span class="status-icon">✅</span>
+  <div class="status-title" style="color: var(--green)">Connected!</div>
+  <div class="status-msg">Your HVAC-Vibe gateway is online.</div>
+  <div class="ip-display" id="ip-display">—</div>
+  <div class="status-msg" style="margin-top:16px">You can close this page.<br>The engine is starting up.</div>
+</div>
+
+<!-- Error screen -->
+<div class="status-screen" id="error-screen">
+  <span class="status-icon">❌</span>
+  <div class="status-title" style="color: var(--red)">Failed</div>
+  <div class="status-msg" id="error-msg">Could not connect. Check your password and try again.</div>
+  <button class="btn-connect" style="margin-top:24px; background: var(--surface); border: 1px solid var(--border)"
+          onclick="resetUI()">Try Again</button>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  let selectedSSID   = null;
+  let selectedSecure = true;
+
+  function selectNetwork(ssid, secure, signal) {
+    selectedSSID   = ssid;
+    selectedSecure = secure;
+
+    // Highlight selected
+    document.querySelectorAll('.network-item').forEach(el => el.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
+
+    // Update step indicator
+    document.getElementById('step1').classList.add('done');
+    document.getElementById('step2').classList.add('active');
+
+    // Show password panel
+    document.getElementById('selected-ssid-label').textContent = ssid;
+    const panel = document.getElementById('pw-panel');
+    panel.classList.add('visible');
+
+    const btn = document.getElementById('btn-connect');
+
+    if (!secure) {
+      // Open network — no password needed
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').placeholder = 'No password required';
+      document.getElementById('pw-input').disabled = true;
+      btn.disabled = false;
+    } else {
+      document.getElementById('pw-input').disabled = false;
+      document.getElementById('pw-input').placeholder = 'Enter WiFi password';
+      document.getElementById('pw-input').focus();
+      btn.disabled = false;
+    }
+
+    // Scroll to password panel
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function togglePw() {
+    const input = document.getElementById('pw-input');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+
+  async function doConnect() {
+    if (!selectedSSID) return;
+
+    const password = document.getElementById('pw-input').value;
+    if (selectedSecure && password.length < 8) {
+      showToast('Password must be at least 8 characters');
+      return;
+    }
+
+    // Show connecting screen
+    showScreen('connecting');
+    document.getElementById('step2').classList.add('done');
+    document.getElementById('step3').classList.add('active');
+    document.getElementById('connecting-msg').textContent = `Connecting to ${selectedSSID}...`;
+
+    try {
+      const resp = await fetch('/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssid: selectedSSID, password: password }),
+      });
+
+      const data = await resp.json();
+
+      if (data.success) {
+        document.getElementById('ip-display').textContent = data.ip;
+        document.getElementById('step3').classList.add('done');
+        showScreen('success');
+      } else {
+        document.getElementById('error-msg').textContent =
+          data.message === 'network_not_found'
+            ? `Network "${selectedSSID}" not found. Move closer or try again.`
+            : data.message === 'connection_failed'
+            ? 'Could not connect. Check your password and try again.'
+            : 'Something went wrong. Previous settings restored.';
+        showScreen('error');
+      }
+    } catch (e) {
+      // fetch will fail when Pi switches networks — that's actually success
+      // Poll /status to confirm
+      pollStatus();
+    }
+  }
+
+  async function pollStatus() {
+    document.getElementById('connecting-msg').textContent = 'Switching networks...';
+    for (let i = 0; i < 35; i++) {
+      await sleep(1000);
+      try {
+        const resp = await fetch('/status', { signal: AbortSignal.timeout(2000) });
+        const data = await resp.json();
+        if (data.connected && data.ip) {
+          document.getElementById('ip-display').textContent = data.ip;
+          document.getElementById('step3').classList.add('done');
+          showScreen('success');
+          return;
+        }
+      } catch (e) { /* still switching */ }
+    }
+    showScreen('error');
+    document.getElementById('error-msg').textContent =
+      'Connection timed out. Previous WiFi settings restored.';
+  }
+
+  function showScreen(name) {
+    document.getElementById('main-panel').style.display     = name === 'main'       ? '' : 'none';
+    document.getElementById('connecting-screen').classList.toggle('visible', name === 'connecting');
+    document.getElementById('success-screen').classList.toggle('visible',    name === 'success');
+    document.getElementById('error-screen').classList.toggle('visible',      name === 'error');
+  }
+
+  function resetUI() {
+    selectedSSID = null;
+    showScreen('main');
+    document.querySelectorAll('.network-item').forEach(el => el.classList.remove('selected'));
+    document.getElementById('pw-panel').classList.remove('visible');
+    document.getElementById('pw-input').value = '';
+    document.getElementById('btn-connect').disabled = true;
+    ['step1','step2','step3'].forEach(id => {
+      document.getElementById(id).classList.remove('active','done');
+    });
+    document.getElementById('step1').classList.add('active');
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>

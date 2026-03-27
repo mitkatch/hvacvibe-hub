@@ -267,18 +267,22 @@ class SensorSession:
             stats = _parse_time_stats(hdr["payload"])
             if stats:
                 stats["seq"] = hdr["seq"]
+                self._pending_time_stats = stats
                 log.debug(f"{self.name}: time_stats seq={hdr['seq']} "
                           f"rms=[{stats['rms_x_mg']},{stats['rms_y_mg']},{stats['rms_z_mg']}]mg")
-                self._publish_time_stats(stats)
+            # If we get time_stats without a preceding FFT (e.g. first burst),
+            # try to publish immediately if we already have FFT from last burst.
+            self._try_publish_combined(hdr["seq"])
 
         elif pkt_type == PKT_TYPE_FFT_STATS:
             fft = _parse_fft_stats(hdr["payload"])
             if fft:
                 fft["seq"] = hdr["seq"]
+                self._pending_fft_stats = fft
                 log.debug(f"{self.name}: fft_stats seq={hdr['seq']} "
                           f"X dom={fft['x']['dominant_hz']}Hz "
                           f"bpfo={fft['x']['bpfo_energy']}")
-                self._publish_fft_stats(fft)
+            self._try_publish_combined(hdr["seq"])
 
         elif pkt_type == PKT_TYPE_RAW:
             self._accumulate_raw_chunk(hdr)
@@ -288,6 +292,27 @@ class SensorSession:
             if parsed:
                 self._last_env = parsed
                 self._publish_environment()
+
+    def _try_publish_combined(self, seq: int):
+        """
+        Publish the full burst result once we have BOTH time_stats and fft_stats
+        for the same seq number. If only one arrives (firmware with SEND_RAW_BURST=0
+        and no FFT), publish what we have after a short grace period.
+        """
+        ts = self._pending_time_stats
+        ff = self._pending_fft_stats
+
+        if ts is None:
+            return   # nothing to publish yet
+
+        if ff is not None and ff.get("seq") != ts.get("seq"):
+            # Sequence mismatch — FFT is from an older burst, use time_stats alone
+            ff = None
+
+        # We have time_stats and (optionally) fft_stats for the same burst
+        self._publish_burst_result(ts, ff)
+        self._pending_time_stats = None
+        self._pending_fft_stats  = None
 
     def _accumulate_raw_chunk(self, hdr: dict):
         """Reassemble multi-chunk raw burst."""
@@ -326,8 +351,8 @@ class SensorSession:
         )
         if summary:
             self._last_vib = summary
-            self._store.update_time_stats(self.sensor_id, self.name, self.address,
-                                          summary, self._last_env)
+            self._store.update_sensor(self.sensor_id, self.name, self.address,
+                                      summary, self._last_env)
             self._publish_status(connected=True)
             self._check_alert(summary)
 
@@ -341,211 +366,165 @@ class SensorSession:
             self._legacy_buf = bytearray()
             self._handle_raw_burst(burst)
 
-    # ── Independent packet publishers (new framed path) ──────────────────
+    # ── Publish burst result (new framed path) ────────────────────────────
 
-    def _publish_time_stats(self, time_stats: dict):
+    def _publish_burst_result(self, time_stats: dict, fft_stats: dict | None):
         """
-        Handle PKT_TYPE_TIME_STATS independently.
-        Publishes vibration/time_stats + status MQTT topics.
-        Writes to history_time table. No FFT pairing needed.
+        Publish all MQTT topics from a decoded stats burst:
+          vibration/time_stats   — time-domain features
+          vibration/fft_stats    — frequency-domain features (if available)
+          vibration/features     — combined compact summary for ML/display
+          status                 — overall sensor status
+          alert                  — on alarm state change
         """
         from engine_config import ALARMS
-        ts_now  = int(time.time())
-        vib_rms = time_stats["vector_rms_g"]
-        max_kurt = max(time_stats["kurtosis_x"],
-                       time_stats["kurtosis_y"],
-                       time_stats["kurtosis_z"])
-        alarm = vib_rms >= ALARMS["vib_rms_alarm"]
-        warn  = vib_rms >= ALARMS["vib_rms_warn"]
+        ts_now = int(time.time())
 
-        # MQTT: full time-domain feature set
+        # ── vibration/time_stats ──────────────────────────────────────────
         self._mqtt.publish(
             topic=self._config.topic(self.sensor_id, "vibration", "time_stats"),
             payload={
-                "ts":           ts_now,
-                "sensor_id":    self.sensor_id,
-                "name":         self.name,
-                "seq":          time_stats.get("seq", 0),
+                "ts":          ts_now,
+                "sensor_id":   self.sensor_id,
+                "name":        self.name,
+                "seq":         time_stats.get("seq", 0),
                 "sample_count": time_stats["sample_count"],
-                "rms_x_mg":     time_stats["rms_x_mg"],
-                "rms_y_mg":     time_stats["rms_y_mg"],
-                "rms_z_mg":     time_stats["rms_z_mg"],
-                "rms_x_g":      time_stats["rms_x_g"],
-                "rms_y_g":      time_stats["rms_y_g"],
-                "rms_z_g":      time_stats["rms_z_g"],
-                "vector_rms_g": vib_rms,
-                "peak_x_g":     time_stats["peak_x_g"],
-                "peak_y_g":     time_stats["peak_y_g"],
-                "peak_z_g":     time_stats["peak_z_g"],
-                "crest_x":      time_stats["crest_x"],
-                "crest_y":      time_stats["crest_y"],
-                "crest_z":      time_stats["crest_z"],
-                "kurtosis_x":   time_stats["kurtosis_x"],
-                "kurtosis_y":   time_stats["kurtosis_y"],
-                "kurtosis_z":   time_stats["kurtosis_z"],
+                # RMS per axis
+                "rms_x_mg":    time_stats["rms_x_mg"],
+                "rms_y_mg":    time_stats["rms_y_mg"],
+                "rms_z_mg":    time_stats["rms_z_mg"],
+                "rms_x_g":     time_stats["rms_x_g"],
+                "rms_y_g":     time_stats["rms_y_g"],
+                "rms_z_g":     time_stats["rms_z_g"],
+                "vector_rms_g": time_stats["vector_rms_g"],
+                # Peak
+                "peak_x_g":    time_stats["peak_x_g"],
+                "peak_y_g":    time_stats["peak_y_g"],
+                "peak_z_g":    time_stats["peak_z_g"],
+                # Crest factor
+                "crest_x":     time_stats["crest_x"],
+                "crest_y":     time_stats["crest_y"],
+                "crest_z":     time_stats["crest_z"],
+                # Kurtosis (3.0 = Gaussian; >4 = bearing fault signature)
+                "kurtosis_x":  time_stats["kurtosis_x"],
+                "kurtosis_y":  time_stats["kurtosis_y"],
+                "kurtosis_z":  time_stats["kurtosis_z"],
+                # Variance
                 "variance_x_mg2": time_stats["variance_x_mg2"],
                 "variance_y_mg2": time_stats["variance_y_mg2"],
                 "variance_z_mg2": time_stats["variance_z_mg2"],
-                "max_kurtosis": round(max_kurt, 2),
-                "alarm":        alarm,
-                "warn":         warn,
-                "_notes": {
-                    "kurtosis": "3.0=normal, >4.0=early fault, >10=severe",
-                    "crest":    "<1.5=smooth, 1.5-3.0=moderate, >3.0=impulsive",
-                },
             },
             qos=1,
         )
 
-        # Update live state and persist
-        vib_summary = {
-            "vib_rms":     vib_rms,
-            "vib_peak":    time_stats["peak_x_g"],
-            "dominant_hz": self._last_vib.get("dominant_hz", 0.0),  # preserve last known
-            "alarm":       alarm,
-            "warn":        warn,
-            "rms_x_g":     time_stats["rms_x_g"],
-            "rms_y_g":     time_stats["rms_y_g"],
-            "rms_z_g":     time_stats["rms_z_g"],
-            "crest_x":     time_stats["crest_x"],
-            "crest_y":     time_stats["crest_y"],
-            "crest_z":     time_stats["crest_z"],
-            "kurtosis_x":  time_stats["kurtosis_x"],
-            "kurtosis_y":  time_stats["kurtosis_y"],
-            "kurtosis_z":  time_stats["kurtosis_z"],
-        }
-        self._last_vib = vib_summary
-        self._store.update_time_stats(self.sensor_id, self.name, self.address,
-                                      vib_summary, self._last_env)
-
-        # ── vibration/features — compact summary for display/ML ───────────
-        self._mqtt.publish(
-            topic=self._config.topic(self.sensor_id, "vibration", "features"),
-            payload={
-                "ts":           ts_now,
-                "sensor_id":    self.sensor_id,
-                "name":         self.name,
-                "seq":          time_stats.get("seq", 0),
-                "vector_rms_g": vib_rms,
-                "dominant_hz":  vib_summary["dominant_hz"],
-                "max_kurtosis": round(max_kurt, 2),
-                "rms_x_g":      time_stats["rms_x_g"],
-                "rms_y_g":      time_stats["rms_y_g"],
-                "rms_z_g":      time_stats["rms_z_g"],
-                "crest_x":      time_stats["crest_x"],
-                "crest_y":      time_stats["crest_y"],
-                "crest_z":      time_stats["crest_z"],
-                "kurtosis_x":   time_stats["kurtosis_x"],
-                "kurtosis_y":   time_stats["kurtosis_y"],
-                "kurtosis_z":   time_stats["kurtosis_z"],
-                "alarm":        alarm,
-                "warn":         warn,
-                "_notes": {
-                    "kurtosis": "3.0=normal, >4.0=early fault, >10=severe",
-                    "snr_bpfo": ">2.0 suggests outer-race fault",
-                    "crest":    "<1.5=smooth, 1.5-3.0=moderate, >3.0=impulsive",
+        # ── vibration/fft_stats ───────────────────────────────────────────
+        if fft_stats:
+            self._mqtt.publish(
+                topic=self._config.topic(self.sensor_id, "vibration", "fft_stats"),
+                payload={
+                    "ts":        ts_now,
+                    "sensor_id": self.sensor_id,
+                    "seq":       fft_stats.get("seq", 0),
+                    # X axis
+                    "x_dominant_hz":  fft_stats["x"]["dominant_hz"],
+                    "x_dominant_mag": fft_stats["x"]["dominant_mag"],
+                    "x_total_power":  fft_stats["x"]["total_power"],
+                    "x_bpfo_energy":  fft_stats["x"]["bpfo_energy"],
+                    "x_bpfi_energy":  fft_stats["x"]["bpfi_energy"],
+                    "x_bsf_energy":   fft_stats["x"]["bsf_energy"],
+                    "x_ftf_energy":   fft_stats["x"]["ftf_energy"],
+                    "x_noise_floor":  fft_stats["x"]["noise_floor"],
+                    "x_snr_bpfo":     fft_stats["x"]["snr_bpfo"],
+                    # Y axis
+                    "y_dominant_hz":  fft_stats["y"]["dominant_hz"],
+                    "y_bpfo_energy":  fft_stats["y"]["bpfo_energy"],
+                    "y_snr_bpfo":     fft_stats["y"]["snr_bpfo"],
+                    # Z axis
+                    "z_dominant_hz":  fft_stats["z"]["dominant_hz"],
+                    "z_bpfo_energy":  fft_stats["z"]["bpfo_energy"],
+                    "z_snr_bpfo":     fft_stats["z"]["snr_bpfo"],
                 },
-            },
-            qos=1,
-        )
+                qos=1,
+            )
 
-        self._publish_status(connected=True)
-        self._check_alert(vib_summary)
-
-    def _publish_fft_stats(self, fft_stats: dict):
-        """
-        Handle PKT_TYPE_FFT_STATS independently.
-        Publishes vibration/fft_stats MQTT topic.
-        Appends a row to history_fft table. No time_stats pairing needed.
-        """
-        ts_now = int(time.time())
-        seq    = fft_stats.get("seq", 0)
-
+        # ── vibration/features — compact summary for ML/display ───────────
+        vib_rms  = time_stats["vector_rms_g"]
+        dom_hz   = fft_stats["x"]["dominant_hz"] if fft_stats else 0
+        max_kurt = max(time_stats["kurtosis_x"],
+                       time_stats["kurtosis_y"],
+                       time_stats["kurtosis_z"])
         max_snr_bpfo = max(
             fft_stats["x"]["snr_bpfo"],
             fft_stats["y"]["snr_bpfo"],
             fft_stats["z"]["snr_bpfo"],
-        )
+        ) if fft_stats else 0.0
 
-        # MQTT: full FFT feature set
+        alarm = vib_rms >= ALARMS["vib_rms_alarm"]
+        warn  = vib_rms >= ALARMS["vib_rms_warn"]
+
         self._mqtt.publish(
-            topic=self._config.topic(self.sensor_id, "vibration", "fft_stats"),
+            topic=self._config.topic(self.sensor_id, "vibration", "features"),
             payload={
                 "ts":             ts_now,
                 "sensor_id":      self.sensor_id,
-                "seq":            seq,
-                "x_dominant_hz":  fft_stats["x"]["dominant_hz"],
-                "x_dominant_mag": fft_stats["x"]["dominant_mag"],
-                "x_total_power":  fft_stats["x"]["total_power"],
-                "x_bpfo_energy":  fft_stats["x"]["bpfo_energy"],
-                "x_bpfi_energy":  fft_stats["x"]["bpfi_energy"],
-                "x_bsf_energy":   fft_stats["x"]["bsf_energy"],
-                "x_ftf_energy":   fft_stats["x"]["ftf_energy"],
-                "x_noise_floor":  fft_stats["x"]["noise_floor"],
-                "x_snr_bpfo":     fft_stats["x"]["snr_bpfo"],
-                "y_dominant_hz":  fft_stats["y"]["dominant_hz"],
-                "y_bpfo_energy":  fft_stats["y"]["bpfo_energy"],
-                "y_snr_bpfo":     fft_stats["y"]["snr_bpfo"],
-                "z_dominant_hz":  fft_stats["z"]["dominant_hz"],
-                "z_bpfo_energy":  fft_stats["z"]["bpfo_energy"],
-                "z_snr_bpfo":     fft_stats["z"]["snr_bpfo"],
+                "name":           self.name,
+                "seq":            time_stats.get("seq", 0),
+                # Primary health indicators
+                "vector_rms_g":   vib_rms,
+                "dominant_hz":    dom_hz,
+                "max_kurtosis":   round(max_kurt, 2),
                 "max_snr_bpfo":   round(max_snr_bpfo, 2),
+                # Per-axis summary
+                "rms_x_g":    time_stats["rms_x_g"],
+                "rms_y_g":    time_stats["rms_y_g"],
+                "rms_z_g":    time_stats["rms_z_g"],
+                "crest_x":    time_stats["crest_x"],
+                "crest_y":    time_stats["crest_y"],
+                "crest_z":    time_stats["crest_z"],
+                "kurtosis_x": time_stats["kurtosis_x"],
+                "kurtosis_y": time_stats["kurtosis_y"],
+                "kurtosis_z": time_stats["kurtosis_z"],
+                # Fault indicators
+                "alarm":      alarm,
+                "warn":       warn,
+                # Fault interpretation guide (for MQTT Explorer display)
                 "_notes": {
-                    "snr_bpfo": ">2.0 suggests outer-race fault",
+                    "kurtosis":  "3.0=normal, >4.0=early fault, >10=severe",
+                    "snr_bpfo":  ">2.0 suggests outer-race fault",
+                    "crest":     "<1.5=smooth, 1.5-3.0=moderate, >3.0=impulsive",
                 },
             },
             qos=1,
         )
 
-        # Persist to history_fft
-        fft_summary = {
-            "x_bpfo":       fft_stats["x"]["bpfo_energy"],
-            "x_bpfi":       fft_stats["x"]["bpfi_energy"],
-            "x_bsf":        fft_stats["x"]["bsf_energy"],
-            "x_ftf":        fft_stats["x"]["ftf_energy"],
-            "x_snr_bpfo":   fft_stats["x"]["snr_bpfo"],
+        # Update live state
+        summary = {
+            "vib_rms":     vib_rms,
+            "vib_peak":    time_stats["peak_x_g"],   # worst-case axis
+            "dominant_hz": dom_hz,
+            "alarm":       alarm,
+            "warn":        warn,
+            # Crest factor per axis
+            "crest_x":     time_stats["crest_x"],
+            "crest_y":     time_stats["crest_y"],
+            "crest_z":     time_stats["crest_z"],
+            # Kurtosis per axis (3.0=normal, >4=early fault, >10=severe)
+            "kurtosis_x":  time_stats["kurtosis_x"],
+            "kurtosis_y":  time_stats["kurtosis_y"],
+            "kurtosis_z":  time_stats["kurtosis_z"],
+            # Bearing fault energies from FFT — None if fft_stats absent
+            "x_bpfo":      fft_stats["x"]["bpfo_energy"] if fft_stats else None,
+            "x_bpfi":      fft_stats["x"]["bpfi_energy"] if fft_stats else None,
+            "x_bsf":       fft_stats["x"]["bsf_energy"]  if fft_stats else None,
+            "x_ftf":       fft_stats["x"]["ftf_energy"]  if fft_stats else None,
+            "x_snr_bpfo":  fft_stats["x"]["snr_bpfo"]    if fft_stats else None,
             "max_snr_bpfo": max_snr_bpfo,
         }
-        self._store.update_fft_stats(self.sensor_id, self.name, self.address,
-                                     fft_summary, seq)
-
-        # Update dominant_hz in live state and republish features with it filled in
-        dom_hz = fft_stats["x"]["dominant_hz"]
-        self._last_vib["dominant_hz"] = dom_hz
-        vib = self._last_vib
-        if vib.get("vib_rms", 0.0) > 0:
-            self._mqtt.publish(
-                topic=self._config.topic(self.sensor_id, "vibration", "features"),
-                payload={
-                    "ts":           ts_now,
-                    "sensor_id":    self.sensor_id,
-                    "name":         self.name,
-                    "seq":          seq,
-                    "vector_rms_g": vib.get("vib_rms",    0.0),
-                    "dominant_hz":  dom_hz,
-                    "max_kurtosis": round(max(vib.get("kurtosis_x", 0),
-                                             vib.get("kurtosis_y", 0),
-                                             vib.get("kurtosis_z", 0)), 2),
-                    "max_snr_bpfo": round(max_snr_bpfo, 2),
-                    "rms_x_g":      vib.get("rms_x_g",   0.0),
-                    "rms_y_g":      vib.get("rms_y_g",   0.0),
-                    "rms_z_g":      vib.get("rms_z_g",   0.0),
-                    "crest_x":      vib.get("crest_x",   0.0),
-                    "crest_y":      vib.get("crest_y",   0.0),
-                    "crest_z":      vib.get("crest_z",   0.0),
-                    "kurtosis_x":   vib.get("kurtosis_x", 0.0),
-                    "kurtosis_y":   vib.get("kurtosis_y", 0.0),
-                    "kurtosis_z":   vib.get("kurtosis_z", 0.0),
-                    "alarm":        vib.get("alarm", False),
-                    "warn":         vib.get("warn",  False),
-                    "_notes": {
-                        "kurtosis": "3.0=normal, >4.0=early fault, >10=severe",
-                        "snr_bpfo": ">2.0 suggests outer-race fault",
-                        "crest":    "<1.5=smooth, 1.5-3.0=moderate, >3.0=impulsive",
-                    },
-                },
-                qos=1,
-            )
+        self._last_vib = summary
+        self._store.update_sensor(self.sensor_id, self.name, self.address,
+                                  summary, self._last_env)
+        self._publish_status(connected=True)
+        self._check_alert(summary)
 
     # ── Shared publish helpers ────────────────────────────────────────────
 
