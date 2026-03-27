@@ -10,8 +10,8 @@ DISPLAY = {
     "width":     480,
     "height":    320,
     "fps":       5,
-    "fb_device": "/dev/fb1",
-    "rotate":    90,
+    "fb_device": "/dev/waveshare",
+    "rotate":    0,
     "font_mono": "Courier New" if not ON_PI else "monospace",
 }
 
