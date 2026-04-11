@@ -116,9 +116,11 @@ async def get_state():
 
 @app.get("/api/history/{sensor_id}")
 async def get_history(sensor_id: str, date: str = None):
+    if date is None:
+        import datetime
+        date = datetime.date.today().strftime("%Y-%m-%d")
     data = history.get_daily_history(sensor_id, date)
     return JSONResponse({"sensor_id": sensor_id, "date": date, "history": data})
-
 
 # ── REST: config ──────────────────────────────────────────────
 

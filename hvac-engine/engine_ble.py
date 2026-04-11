@@ -180,6 +180,25 @@ class SensorSession:
             retain=True,
         )
 
+    async def send_nus_command(self, client, command: str):
+        """
+        Send a NUS (Nordic UART Service) command to the sensor firmware.
+        Used for rename: sends "NAME:Compressor-1\\n" via BLE write.
+        """
+        try:
+            from engine_config import NUS_TX_UUID
+        except ImportError:
+            # Nordic UART Service RX characteristic (write to send to device)
+            NUS_TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+        try:
+            data = (command + "\n").encode("utf-8")
+            await client.write_gatt_char(NUS_TX_UUID, data, response=False)
+            log.info(f"{self.name}: NUS command sent: {command!r}")
+            return True
+        except Exception as e:
+            log.warning(f"{self.name}: NUS write failed: {e}")
+            return False
+
 
 # ── BLE async tasks ───────────────────────────────────────────
 
@@ -195,19 +214,23 @@ async def _connect_and_monitor(address: str, name: str, sensor_id: str,
             log.info(f"Connecting to {name} ({address})...")
             async with BleakClient(address, timeout=config.BLE["connect_timeout"]) as client:
                 log.info(f"Connected: {name}")
+                _register_session(sensor_id, session, client)
                 await client.start_notify(BURST_DATA_UUID, session.on_burst)
                 await client.start_notify(ENV_DATA_UUID,   session.on_env)
                 log.info(f"{name}: subscribed to burst + env")
                 while client.is_connected:
                     await asyncio.sleep(1.0)
 
+            _unregister_session(sensor_id)
             session.publish_disconnected()
             log.warning(f"{name}: disconnected — retrying in {config.BLE['retry_delay']}s")
 
         except asyncio.CancelledError:
+            _unregister_session(sensor_id)
             session.publish_disconnected()
             return
         except Exception as e:
+            _unregister_session(sensor_id)
             session.publish_disconnected()
             log.warning(f"{name}: error {e} — retrying in {config.BLE['retry_delay']}s")
 
@@ -311,6 +334,119 @@ def _sim_loop(config, store, mqtt_client):
             session._handle_burst(burst)
 
 
+# ── Active session registry ───────────────────────────────────────────────
+# Maps sensor_id → (SensorSession, BleakClient) for command dispatch
+# Updated by _connect_and_monitor as sensors connect/disconnect
+
+_active_sessions: dict[str, tuple] = {}   # sensor_id → (session, client)
+_sessions_lock = threading.Lock()
+
+
+def _register_session(sensor_id: str, session, client):
+    with _sessions_lock:
+        _active_sessions[sensor_id] = (session, client)
+    log.debug(f"Session registered: {sensor_id}")
+
+
+def _unregister_session(sensor_id: str):
+    with _sessions_lock:
+        _active_sessions.pop(sensor_id, None)
+    log.debug(f"Session unregistered: {sensor_id}")
+
+
+# ── Command handler ───────────────────────────────────────────────────────
+
+class CommandHandler:
+    """
+    Handles MQTT commands from hvac-setup portal.
+
+    Subscribes to: hvac/{gateway_id}/commands/sensor/+
+    Publishes ack:  hvac/{gateway_id}/commands/sensor/{sensor_id}/ack
+
+    Supported commands:
+      rename — set display_name on sensor firmware via BLE NUS
+    """
+
+    def __init__(self, config, mqtt_client, loop: asyncio.AbstractEventLoop):
+        self._config  = config
+        self._mqtt    = mqtt_client
+        self._loop    = loop
+
+    def start(self):
+        # Build command topic using same gateway prefix as other topics
+        # config.topic() builds: hvac/{gateway_id}/{sensor_id}/{...}
+        # We need: hvac/{gateway_id}/commands/sensor/+
+        # Derive prefix from a dummy topic call
+        dummy   = self._config.topic("_", "x")   # hvac/{gw_id}/_/x
+        prefix  = "/".join(dummy.split("/")[:2])  # hvac/{gw_id}
+        topic   = f"{prefix}/commands/sensor/+"
+        self._prefix = prefix
+        self._mqtt.subscribe(topic, self._on_command, qos=1)
+        log.info(f"CommandHandler subscribed: {topic}")
+
+    def _on_command(self, topic: str, payload: dict):
+        """Called by MQTT on_message — runs in MQTT thread."""
+        cmd        = payload.get("cmd", "")
+        sensor_id  = payload.get("sensor_id", "")
+        request_id = payload.get("request_id", "")
+
+        log.info(f"Command received: cmd={cmd} sensor={sensor_id} "
+                 f"request_id={request_id}")
+
+        if cmd == "rename":
+            display_name = payload.get("display_name", "").strip()
+            if not display_name:
+                self._ack(sensor_id, request_id, False, "missing display_name")
+                return
+            # Dispatch to BLE thread via event loop
+            asyncio.run_coroutine_threadsafe(
+                self._handle_rename(sensor_id, display_name, request_id),
+                self._loop
+            )
+        else:
+            log.warning(f"Unknown command: {cmd}")
+            self._ack(sensor_id, request_id, False, f"unknown command: {cmd}")
+
+    async def _handle_rename(self, sensor_id: str, display_name: str,
+                              request_id: str):
+        """Send NUS rename command — runs in BLE event loop."""
+        with _sessions_lock:
+            entry = _active_sessions.get(sensor_id)
+
+        if not entry:
+            log.warning(f"Rename: sensor {sensor_id} not connected")
+            self._ack(sensor_id, request_id, False, "sensor not connected")
+            return
+
+        session, client = entry
+        success = await session.send_nus_command(client, f"NAME:{display_name}")
+
+        if success:
+            # Update in-memory name
+            session.name = display_name
+            log.info(f"Renamed {sensor_id} → {display_name!r}")
+
+        self._ack(sensor_id, request_id, success,
+                  None if success else "NUS write failed")
+
+    def _ack(self, sensor_id: str, request_id: str,
+             success: bool, error: str = None):
+        """Publish command acknowledgement."""
+        import time
+        ack_topic = f"{self._prefix}/commands/sensor/{sensor_id}/ack"
+        payload = {
+            "request_id": request_id,
+            "sensor_id":  sensor_id,
+            "success":    success,
+            "ts":         int(time.time()),
+        }
+        if error:
+            payload["error"] = error
+
+        self._mqtt.publish(ack_topic, payload, qos=1)
+        log.info(f"Ack sent: sensor={sensor_id} success={success}")
+
+
 # ── Public API ────────────────────────────────────────────────
 
 class BLEScanner:
@@ -341,6 +477,30 @@ class BLEScanner:
             )
         self._thread.start()
         log.info(f"BLE thread started: {self._thread.name}")
+
+    def start_command_handler(self, config, mqtt_client):
+        """
+        Start MQTT command handler once BLE loop is running.
+        Must be called after start() — waits for loop to be ready.
+        """
+        if config.sim_mode:
+            log.info("Sim mode — command handler uses main thread loop")
+            loop = asyncio.new_event_loop()
+        else:
+            # Wait for BLE loop to start
+            for _ in range(20):
+                if self._loop is not None:
+                    break
+                time.sleep(0.1)
+            loop = self._loop
+
+        if loop is None:
+            log.warning("BLE loop not available — command handler disabled")
+            return
+
+        handler = CommandHandler(config, mqtt_client, loop)
+        handler.start()
+        log.info("Command handler started")
 
     def stop(self):
         self._stop.set()

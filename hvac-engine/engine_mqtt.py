@@ -26,6 +26,9 @@ class EngineMQTT:
         self._config    = None
         self._thread:   threading.Thread | None = None
         self._stop      = threading.Event()
+        # Registered message handlers: topic_pattern → callback(topic, payload)
+        self._handlers: list[tuple[str, callable]] = []
+        self._handlers_lock = threading.Lock()
 
     # ── Lifecycle ─────────────────────────────────────────────
 
@@ -37,6 +40,7 @@ class EngineMQTT:
         )
         self._client.on_connect    = self._on_connect
         self._client.on_disconnect = self._on_disconnect
+        self._client.on_message    = self._on_message
 
         self._thread = threading.Thread(
             target=self._connect_loop,
@@ -55,6 +59,20 @@ class EngineMQTT:
             except Exception:
                 pass
         log.info("MQTT stopped")
+
+    # ── Subscribe ─────────────────────────────────────────────
+
+    def subscribe(self, topic: str, callback, qos: int = 1):
+        """
+        Subscribe to a topic pattern and register a callback.
+        callback(topic: str, payload: dict) — called on each matching message.
+        Safe to call before connection — subscriptions are re-applied on reconnect.
+        """
+        with self._handlers_lock:
+            self._handlers.append((topic, callback))
+        if self._connected and self._client:
+            self._client.subscribe(topic, qos=qos)
+            log.info(f"MQTT subscribed: {topic}")
 
     # ── Publish ───────────────────────────────────────────────
 
@@ -101,6 +119,11 @@ class EngineMQTT:
         if rc == 0:
             self._connected = True
             log.info("MQTT connected ✓")
+            # Re-subscribe all registered handlers after (re)connect
+            with self._handlers_lock:
+                for topic, _ in self._handlers:
+                    client.subscribe(topic, qos=1)
+                    log.info(f"MQTT re-subscribed: {topic}")
         else:
             self._connected = False
             log.warning(f"MQTT connect refused rc={rc}")
@@ -109,6 +132,24 @@ class EngineMQTT:
         self._connected = False
         if rc != 0:
             log.warning(f"MQTT unexpected disconnect rc={rc} — reconnecting...")
+
+    def _on_message(self, client, userdata, msg):
+        """Route incoming messages to registered handlers."""
+        try:
+            payload = json.loads(msg.payload.decode())
+        except Exception:
+            log.warning(f"MQTT message parse error on {msg.topic}")
+            return
+
+        with self._handlers_lock:
+            handlers = list(self._handlers)
+
+        for topic_pattern, callback in handlers:
+            if paho.topic_matches_sub(topic_pattern, msg.topic):
+                try:
+                    callback(msg.topic, payload)
+                except Exception as e:
+                    log.error(f"MQTT handler error for {msg.topic}: {e}")
             # paho loop_start handles reconnect automatically
 
 

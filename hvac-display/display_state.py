@@ -105,7 +105,7 @@ class DisplayState:
             s = self._get_or_create(sensor_id)
             s.temp_c    = payload.get("temp_c",   s.temp_c)
             s.humidity  = payload.get("humidity", s.humidity)
-            s.pressure  = payload.get("pressure", s.pressure)
+            s.pressure = payload.get("pressure_pa", payload.get("pressure_hpa", s.pressure))
         self._notify()
 
     def handle_fft(self, sensor_id: str, payload: dict):

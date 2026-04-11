@@ -39,21 +39,27 @@ def get_daily_history(sensor_id: str, date: str = None) -> list[dict]:
         date = datetime.date.today().strftime("%Y-%m-%d")
     try:
         cur = _conn.execute(
-            """SELECT minute_of_day, vib_rms, temp_c, humidity
-               FROM history
-               WHERE sensor_id = ? AND date = ?
-               ORDER BY minute_of_day""",
+    """SELECT minute_of_day, vib_rms, vib_peak, dominant_hz,
+              temp_c, humidity, alarm, warn
+       FROM history_time
+       WHERE sensor_id = ? AND date = ?
+       ORDER BY minute_of_day""",
             (sensor_id, date),
         )
+        
         return [
-            {
-                "minute":   row["minute_of_day"],
-                "vib_rms":  row["vib_rms"],
-                "temp_c":   row["temp_c"],
-                "humidity": row["humidity"],
-            }
-            for row in cur.fetchall()
-        ]
+    {
+        "minute":       row["minute_of_day"],
+        "vib_rms":      row["vib_rms"],
+        "vib_peak":     row["vib_peak"],
+        "dominant_hz":  row["dominant_hz"],
+        "temp_c":       row["temp_c"],
+        "humidity":     row["humidity"],
+        "alarm":        bool(row["alarm"]),
+        "warn":         bool(row["warn"]),
+    }
+    for row in cur.fetchall()
+]
     except Exception as e:
         log.warning(f"History query error: {e}")
         return []

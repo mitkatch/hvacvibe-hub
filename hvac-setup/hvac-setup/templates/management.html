@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>HVAC-Vibe · Management</title>
+<style>
+  :root {
+    --bg:      #07090f;
+    --surface: #0d1117;
+    --surface2: #121820;
+    --border:  #1c2333;
+    --accent:  #00b4d8;
+    --green:   #00e676;
+    --red:     #ff1744;
+    --yellow:  #ffc107;
+    --text:    #e6edf3;
+    --muted:   #48607a;
+    --radius:  10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    padding-bottom: 60px;
+  }
+
+  /* Header */
+  .header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, #0077b6, #00b4d8);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text { font-size: 15px; font-weight: 700; letter-spacing: 0.1em; }
+  .logo-text span { color: var(--accent); }
+  .logo-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+  .header-ip { font-size: 11px; color: var(--muted); text-align: right; }
+  .dot-live {
+    display: inline-block; width: 6px; height: 6px;
+    background: var(--green); border-radius: 50%;
+    margin-right: 4px; animation: blink 2s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+  }
+  .tab {
+    padding: 12px 16px; font-size: 11px;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted); cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .panel { display: none; padding: 20px; }
+  .panel.active { display: block; }
+
+  /* Label */
+  .label {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.14em; color: var(--muted);
+    margin-bottom: 10px; padding-left: 2px;
+  }
+
+  /* Sensor cards */
+  .sensor-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .card.online  { border-left-color: var(--green); }
+  .card.offline { border-left-color: var(--muted); }
+
+  .card-head {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; margin-bottom: 10px;
+  }
+  .card-name { font-size: 15px; font-weight: 700; }
+  .card-id   { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  .badge {
+    font-size: 10px; padding: 3px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0;
+  }
+  .badge.online  { background: rgba(0,230,118,0.1); color: var(--green); }
+  .badge.offline { background: rgba(72,96,122,0.2); color: var(--muted); }
+
+  .card-stats {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 6px; margin-bottom: 12px;
+  }
+  .stat {
+    background: var(--surface2); border-radius: 6px; padding: 8px 10px;
+  }
+  .stat-l { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+  .stat-v { font-size: 14px; font-weight: 700; color: var(--accent); margin-top: 2px; }
+
+  .card-actions { display: flex; gap: 8px; }
+
+  .btn-s {
+    flex: 1; padding: 8px; border-radius: 6px;
+    font-family: inherit; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted);
+    transition: all 0.2s; -webkit-tap-highlight-color: transparent;
+  }
+  .btn-s:active { transform: scale(0.97); }
+  .btn-s:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-s.primary { background: rgba(0,180,216,0.12); border-color: var(--accent); color: var(--accent); }
+  .btn-s.success { background: rgba(0,230,118,0.1);  border-color: var(--green);  color: var(--green); }
+  .btn-s.danger  { background: rgba(255,23,68,0.08); border-color: var(--red);    color: var(--red); }
+
+  /* Edit form */
+  .edit { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .edit.open { display: block; }
+  .field { margin-bottom: 10px; }
+  .field-l { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 5px; }
+  input[type="text"] {
+    width: 100%; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 9px 12px; font-family: inherit; font-size: 14px;
+    color: var(--text); outline: none; transition: border-color 0.2s;
+  }
+  input:focus { border-color: var(--accent); }
+  .edit-btns { display: flex; gap: 8px; margin-top: 10px; }
+
+  /* System tab */
+  .sys-row {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sys-label { font-size: 13px; }
+  .sys-value { font-size: 13px; color: var(--accent); font-weight: 600; }
+
+  /* Exit */
+  .exit-row { text-align: center; margin-top: 28px; }
+  .btn-exit {
+    background: none; border: 1px solid var(--border);
+    border-radius: 6px; padding: 9px 22px;
+    font-family: inherit; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--muted); cursor: pointer;
+  }
+
+  /* Sync indicator */
+  .sync-state { font-size: 10px; color: var(--muted); margin-top: 6px; text-align: right; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 9px 18px; border-radius: 7px;
+    font-size: 12px; opacity: 0;
+    transition: transform 0.3s, opacity 0.3s; white-space: nowrap; z-index: 99;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.ok  { border-color: var(--green); color: var(--green); }
+  .toast.err { border-color: var(--red);   color: var(--red); }
+
+  .empty { text-align: center; padding: 40px 0; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-mark">📡</div>
+    <div>
+      <div class="logo-text">HVAC<span>-Vibe</span></div>
+      <div class="logo-sub">Management</div>
+    </div>
+  </div>
+  <div class="header-ip">
+    <span class="dot-live"></span>{{ current_ip }}
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="tab('sensors', this)">Sensors</div>
+  <div class="tab" onclick="tab('system', this)">System</div>
+</div>
+
+<!-- Sensors -->
+<div class="panel active" id="p-sensors">
+  <div class="label">Paired Sensors</div>
+
+  <div class="sensor-list">
+    {% if sensors %}
+    {% for s in sensors %}
+    <div class="card {{ 'online' if s.connected else 'offline' }}" id="card-{{ s.sensor_id }}">
+      <div class="card-head">
+        <div>
+          <div class="card-name" id="dname-{{ s.sensor_id }}">{{ s.display_name or s.sensor_id }}</div>
+          <div class="card-id">{{ s.sensor_id }} · {{ s.ble_mac }}</div>
+        </div>
+        <div class="badge {{ 'online' if s.connected else 'offline' }}">
+          {{ 'Online' if s.connected else 'Offline' }}
+        </div>
+      </div>
+
+      <div class="card-stats">
+        <div class="stat">
+          <div class="stat-l">RMS (g)</div>
+          <div class="stat-v">{% if s.vib_rms %}{{ "%.3f"|format(s.vib_rms) }}{% else %}—{% endif %}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-l">Kurtosis</div>
+          <div class="stat-v">{% if s.kurtosis_x %}{{ "%.1f"|format(s.kurtosis_x) }}{% else %}—{% endif %}</div>
+        </div>
+      </div>
+
+      {% if s.location or s.asset_type %}
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">
+        {% if s.asset_type %}{{ s.asset_type }}{% endif %}
+        {% if s.asset_type and s.location %} · {% endif %}
+        {% if s.location %}{{ s.location }}{% endif %}
+      </div>
+      {% endif %}
+
+      <div class="card-actions">
+        <button class="btn-s primary" onclick="toggleEdit('{{ s.sensor_id }}')">✏ Edit</button>
+        <button class="btn-s success" onclick="sync('{{ s.sensor_id }}')"
+                {% if not s.connected %}disabled title="Sensor offline"{% endif %}>↑ Sync</button>
+        <button class="btn-s danger" onclick="remove('{{ s.sensor_id }}')">✕</button>
+      </div>
+
+      <div class="edit" id="edit-{{ s.sensor_id }}">
+        <div class="field">
+          <div class="field-l">Display Name</div>
+          <input type="text" id="n-{{ s.sensor_id }}" value="{{ s.display_name or '' }}" placeholder="e.g. Compressor-1">
+        </div>
+        <div class="field">
+          <div class="field-l">Asset Type</div>
+          <input type="text" id="t-{{ s.sensor_id }}" value="{{ s.asset_type or '' }}" placeholder="compressor, fan, pump...">
+        </div>
+        <div class="field">
+          <div class="field-l">Location</div>
+          <input type="text" id="l-{{ s.sensor_id }}" value="{{ s.location or '' }}" placeholder="Roof Unit 3, Basement...">
+        </div>
+        <div class="edit-btns">
+          <button class="btn-s primary" onclick="save('{{ s.sensor_id }}')">Save</button>
+          <button class="btn-s" onclick="toggleEdit('{{ s.sensor_id }}')">Cancel</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">No sensors paired yet.<br>Start hvac-engine to discover sensors.</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- System -->
+<div class="panel" id="p-system">
+  <div class="label">Gateway</div>
+  <div class="sys-row">
+    <div class="sys-label">Gateway ID</div>
+    <div class="sys-value">{{ gateway_id }}</div>
+  </div>
+  <div class="sys-row">
+    <div class="sys-label">IP Address</div>
+    <div class="sys-value">{{ current_ip }}</div>
+  </div>
+  <div class="sys-row">
+    <div class="sys-label">Sensors Online</div>
+    <div class="sys-value">{{ sensors | selectattr('connected') | list | length }} / {{ sensors | length }}</div>
+  </div>
+</div>
+
+<div class="exit-row">
+  <button class="btn-exit" onclick="doExit()">⏻ Exit Management</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function tab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('p-' + name).classList.add('active');
+}
+
+function toggleEdit(id) {
+  document.getElementById('edit-' + id).classList.toggle('open');
+}
+
+async function save(id) {
+  const n = document.getElementById('n-' + id).value;
+  const t = document.getElementById('t-' + id).value;
+  const l = document.getElementById('l-' + id).value;
+  const r = await fetch('/sensors/update', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ sensor_id: id, display_name: n, asset_type: t, location: l })
+  });
+  const d = await r.json();
+  if (d.success) {
+    document.getElementById('dname-' + id).textContent = n || id;
+    document.getElementById('edit-' + id).classList.remove('open');
+    toast('Saved ✓', 'ok');
+  } else {
+    toast('Save failed', 'err');
+  }
+}
+
+async function sync(id) {
+  toast('Syncing to sensor firmware...', 'ok');
+  const r = await fetch('/sensors/sync', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ sensor_id: id })
+  });
+  const d = await r.json();
+  toast(d.success ? '✓ Firmware updated' : `Sync failed: ${d.error || ''}`,
+        d.success ? 'ok' : 'err');
+}
+
+async function remove(id) {
+  if (!confirm('Remove this sensor profile?')) return;
+  const r = await fetch('/sensors/remove', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ sensor_id: id })
+  });
+  const d = await r.json();
+  if (d.success) {
+    document.getElementById('card-' + id).style.display = 'none';
+    toast('Removed', 'ok');
+  } else {
+    toast('Remove failed', 'err');
+  }
+}
+
+async function doExit() {
+  await fetch('/exit', { method: 'POST' }).catch(() => {});
+  document.body.innerHTML = '<div style="text-align:center;padding:80px 20px;color:#48607a;font-family:monospace;font-size:13px">Management mode closed.<br>You can close this tab.</div>';
+}
+
+function toast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = `toast show ${type||''}`;
+  setTimeout(() => t.className = 'toast', 3000);
+}
+</script>
+</body>
+</html>

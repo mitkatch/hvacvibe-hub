@@ -56,6 +56,9 @@ def main():
     from engine_ble import ble_scanner
     ble_scanner.start(config, store, mqtt_client)
 
+    # Start command handler — listens for rename/config commands from setup portal
+    ble_scanner.start_command_handler(config, mqtt_client)
+
     # Start gateway heartbeat — publishes Pi health every 30s
     from engine_heartbeat import heartbeat
     heartbeat.start(config, mqtt_client)
