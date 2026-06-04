@@ -4,21 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>HVAC-Vibe</title>
+<title>HVAC-Vibe Setup</title>
 <style>
   :root {
-    --bg:       #080c14;
-    --surface:  #0e1520;
-    --surface2: #141e2e;
-    --border:   #1a2840;
-    --accent:   #00d4ff;
-    --accent2:  #0088ff;
-    --green:    #00e87a;
-    --red:      #ff3d5a;
-    --yellow:   #ffb800;
-    --text:     #e2eeff;
-    --muted:    #4a6080;
-    --radius:   10px;
+    --bg:      #0a0e1a;
+    --surface: #111827;
+    --border:  #1e2d45;
+    --blue:    #2e86de;
+    --blue2:   #54a0ff;
+    --green:   #26de81;
+    --red:     #ff4757;
+    --text:    #e8f0fe;
+    --muted:   #6b7a99;
+    --radius:  12px;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,875 +24,572 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: 'Courier New', 'Lucida Console', monospace;
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', monospace;
     min-height: 100vh;
-    padding-bottom: 40px;
+    padding: 0 16px 40px;
   }
 
-  /* ── Header ── */
+  /* Header */
   .header {
-    background: var(--surface);
+    padding: 28px 0 20px;
+    text-align: center;
     border-bottom: 1px solid var(--border);
-    padding: 16px 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    margin-bottom: 24px;
   }
 
   .logo {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
+    margin-bottom: 6px;
   }
 
-  .logo-mark {
-    width: 36px; height: 36px;
-    background: linear-gradient(135deg, var(--accent2), var(--accent));
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: var(--blue);
     border-radius: 8px;
     display: flex; align-items: center; justify-content: center;
     font-size: 18px;
   }
 
   .logo-text {
-    font-size: 17px;
+    font-size: 20px;
     font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--text);
   }
 
-  .logo-text span { color: var(--accent); }
+  .logo-text span { color: var(--blue2); }
 
-  .header-ip {
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-  }
-
-  .header-ip .dot {
-    display: inline-block;
-    width: 6px; height: 6px;
-    background: var(--green);
-    border-radius: 50%;
-    margin-right: 5px;
-    animation: pulse 2s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
-  }
-
-  /* ── Tabs ── */
-  .tabs {
-    display: flex;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 20px;
-  }
-
-  .tab {
-    padding: 12px 16px;
+  .subtitle {
     font-size: 12px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
     color: var(--muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: color 0.2s, border-color 0.2s;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-
-  /* ── Content ── */
-  .content { padding: 20px; }
-
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-
-  /* ── Section label ── */
-  .label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    color: var(--muted);
-    margin-bottom: 10px;
-    padding-left: 2px;
-  }
-
-  /* ── Sensor cards ── */
-  .sensor-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
-
-  .sensor-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    transition: border-color 0.2s;
-  }
-
-  .sensor-card.connected { border-left: 3px solid var(--green); }
-  .sensor-card.disconnected { border-left: 3px solid var(--muted); }
-
-  .sensor-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
-
-  .sensor-name {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text);
-  }
-
-  .sensor-id {
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
-
-  .status-badge {
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    text-transform: uppercase;
     letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
-  .status-badge.online  { background: rgba(0,232,122,0.12); color: var(--green); }
-  .status-badge.offline { background: rgba(74,96,128,0.2);  color: var(--muted); }
-
-  .sensor-stats {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
-
-  .stat {
-    background: var(--surface2);
-    border-radius: 6px;
-    padding: 8px 10px;
-  }
-
-  .stat-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
-  .stat-value { font-size: 14px; font-weight: 700; color: var(--accent); margin-top: 2px; }
-
-  .sensor-actions {
+  /* Step indicator */
+  .steps {
     display: flex;
+    justify-content: center;
     gap: 8px;
+    margin-bottom: 28px;
   }
 
-  .btn-sm {
-    flex: 1;
-    padding: 8px;
-    border-radius: 6px;
-    font-family: inherit;
+  .step {
+    width: 28px; height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.3s;
+  }
+
+  .step.active { background: var(--blue); }
+  .step.done   { background: var(--green); }
+
+  /* Section label */
+  .section-label {
     font-size: 11px;
-    letter-spacing: 0.08em;
     text-transform: uppercase;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    background: var(--surface2);
+    letter-spacing: 0.12em;
     color: var(--muted);
-    transition: all 0.2s;
-    -webkit-tap-highlight-color: transparent;
+    margin-bottom: 10px;
+    padding-left: 4px;
   }
 
-  .btn-sm:active { transform: scale(0.97); }
-  .btn-sm.primary { background: rgba(0,136,255,0.15); border-color: var(--accent2); color: var(--accent); }
-  .btn-sm.danger  { background: rgba(255,61,90,0.1);  border-color: var(--red);    color: var(--red); }
-  .btn-sm.success { background: rgba(0,232,122,0.1);  border-color: var(--green);  color: var(--green); }
-
-  /* ── Edit form ── */
-  .edit-form {
-    display: none;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
+  /* Network list */
+  .network-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 24px;
   }
-
-  .edit-form.open { display: block; }
-
-  .field { margin-bottom: 10px; }
-  .field-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 5px; }
-
-  input[type="text"] {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 9px 12px;
-    font-family: inherit;
-    font-size: 14px;
-    color: var(--text);
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  input[type="text"]:focus { border-color: var(--accent2); }
-
-  .edit-actions { display: flex; gap: 8px; margin-top: 12px; }
-
-  /* ── Network list ── */
-  .network-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
 
   .network-item {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 12px 14px;
+    padding: 14px 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 12px;
-    transition: border-color 0.2s;
+    gap: 14px;
+    transition: border-color 0.2s, background 0.2s;
     -webkit-tap-highlight-color: transparent;
   }
 
-  .network-item.selected { border-color: var(--accent2); background: rgba(0,136,255,0.06); }
+  .network-item:active,
+  .network-item.selected {
+    border-color: var(--blue);
+    background: rgba(46, 134, 222, 0.08);
+  }
 
-  .signal-bars {
+  .signal-icon {
+    flex-shrink: 0;
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    height: 16px;
-    flex-shrink: 0;
+    height: 18px;
   }
 
-  .signal-bars .bar {
+  .signal-icon .bar {
     width: 4px;
     background: var(--muted);
     border-radius: 1px;
   }
 
-  .signal-bars .bar.lit { background: var(--accent); }
-  .signal-bars .bar:nth-child(1) { height: 4px; }
-  .signal-bars .bar:nth-child(2) { height: 8px; }
-  .signal-bars .bar:nth-child(3) { height: 12px; }
-  .signal-bars .bar:nth-child(4) { height: 16px; }
+  .signal-icon .bar.lit { background: var(--blue2); }
+  .signal-icon .bar:nth-child(1) { height: 5px; }
+  .signal-icon .bar:nth-child(2) { height: 9px; }
+  .signal-icon .bar:nth-child(3) { height: 13px; }
+  .signal-icon .bar:nth-child(4) { height: 18px; }
 
-  .net-info { flex: 1; min-width: 0; }
-  .net-ssid { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .net-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
-  .lock-icon { font-size: 12px; color: var(--muted); }
+  .network-info { flex: 1; min-width: 0; }
 
-  /* ── Password panel ── */
-  .pw-panel {
+  .network-ssid {
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+
+  .network-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .lock-icon {
+    font-size: 13px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* Password panel */
+  .password-panel {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px;
-    margin-bottom: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
     display: none;
   }
 
-  .pw-panel.open { display: block; }
+  .password-panel.visible { display: block; }
 
-  .selected-net {
-    display: flex; align-items: center; gap: 8px;
-    margin-bottom: 14px; padding-bottom: 12px;
+  .selected-network {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
     border-bottom: 1px solid var(--border);
   }
 
-  .selected-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
-  .selected-ssid { font-size: 14px; font-weight: 600; color: var(--accent); }
-
-  .pw-wrap { position: relative; }
-
-  .pw-wrap input { padding-right: 44px; }
-
-  .toggle-pw {
-    position: absolute; right: 12px; top: 50%;
-    transform: translateY(-50%);
-    background: none; border: none;
-    color: var(--muted); cursor: pointer; font-size: 15px;
+  .selected-dot {
+    width: 8px; height: 8px;
+    background: var(--blue);
+    border-radius: 50%;
+    flex-shrink: 0;
   }
 
-  /* ── Buttons ── */
-  .btn {
+  .selected-ssid {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--blue2);
+  }
+
+  .input-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .pw-input-wrap {
+    position: relative;
+  }
+
+  input[type="password"],
+  input[type="text"] {
     width: 100%;
-    padding: 13px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 44px 12px 14px;
+    font-size: 16px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus { border-color: var(--blue); }
+
+  .toggle-pw {
+    position: absolute;
+    right: 12px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 16px; padding: 4px;
+  }
+
+  /* Connect button */
+  .btn-connect {
+    width: 100%;
+    padding: 15px;
+    background: var(--blue);
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: white;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    text-transform: uppercase;
+  }
+
+  .btn-connect:active { transform: scale(0.98); opacity: 0.9; }
+  .btn-connect:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Refresh button */
+  .btn-refresh {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid var(--border);
     border-radius: var(--radius);
     font-family: inherit;
     font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    color: var(--muted);
     cursor: pointer;
-    border: none;
-    transition: opacity 0.2s, transform 0.1s;
+    margin-top: 10px;
+    transition: border-color 0.2s, color 0.2s;
   }
 
-  .btn:active { transform: scale(0.98); }
-  .btn:disabled { opacity: 0.35; cursor: not-allowed; }
-  .btn-primary { background: var(--accent2); color: white; }
-  .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--muted); margin-top: 8px; }
-  .btn-danger { background: rgba(255,61,90,0.15); border: 1px solid var(--red); color: var(--red); margin-top: 8px; }
+  .btn-refresh:hover { border-color: var(--blue); color: var(--blue2); }
 
-  /* ── Status screens ── */
-  .status-screen { display: none; text-align: center; padding: 48px 20px; }
-  .status-screen.show { display: block; }
-  .status-icon { font-size: 52px; margin-bottom: 18px; display: block; }
-  .status-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
-  .status-msg { font-size: 13px; color: var(--muted); line-height: 1.6; }
-  .ip-chip {
-    display: inline-block; margin-top: 16px;
-    padding: 8px 18px;
-    background: rgba(0,212,255,0.1);
-    border: 1px solid var(--accent);
-    border-radius: 6px;
-    font-size: 20px; font-weight: 700; color: var(--accent);
-    letter-spacing: 0.05em;
+  /* Status screens */
+  .status-screen {
+    display: none;
+    text-align: center;
+    padding: 40px 20px;
   }
 
+  .status-screen.visible { display: block; }
+
+  .status-icon {
+    font-size: 56px;
+    margin-bottom: 20px;
+    display: block;
+  }
+
+  .status-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
+  .status-msg {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .ip-display {
+    display: inline-block;
+    margin-top: 18px;
+    padding: 10px 20px;
+    background: rgba(46, 134, 222, 0.12);
+    border: 1px solid var(--blue);
+    border-radius: 8px;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--blue2);
+    letter-spacing: 0.06em;
+  }
+
+  /* Spinner */
   .spinner {
     display: inline-block;
-    width: 44px; height: 44px;
+    width: 48px; height: 48px;
     border: 3px solid var(--border);
-    border-top-color: var(--accent);
+    border-top-color: var(--blue);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
-    margin-bottom: 18px;
+    margin-bottom: 20px;
   }
 
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── WiFi current ── */
-  .wifi-current {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .wifi-dot { width: 10px; height: 10px; background: var(--green); border-radius: 50%; flex-shrink: 0; }
-  .wifi-label { font-size: 11px; color: var(--muted); }
-  .wifi-ip { font-size: 15px; font-weight: 700; color: var(--text); }
-
-  /* ── Exit button ── */
-  .exit-row { text-align: center; margin-top: 24px; }
-  .btn-exit {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 20px;
-    font-family: inherit;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
-    cursor: pointer;
-  }
-
-  /* ── Toast ── */
+  /* Toast */
   .toast {
     position: fixed;
-    bottom: 20px; left: 50%;
-    transform: translateX(-50%) translateY(60px);
-    background: var(--surface);
-    border: 1px solid var(--border);
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--red);
+    color: white;
     padding: 10px 20px;
     border-radius: 8px;
-    font-size: 12px;
+    font-size: 13px;
     opacity: 0;
     transition: transform 0.3s, opacity 0.3s;
     white-space: nowrap;
     z-index: 99;
   }
 
-  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
-  .toast.ok   { border-color: var(--green); color: var(--green); }
-  .toast.err  { border-color: var(--red);   color: var(--red); }
+  .toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
 
-  /* ── Empty state ── */
-  .empty { text-align: center; padding: 40px 0; color: var(--muted); font-size: 13px; }
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 32px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
 </style>
 </head>
 <body>
 
 <div class="header">
   <div class="logo">
-    <div class="logo-mark">📡</div>
+    <div class="logo-icon">📡</div>
     <div class="logo-text">HVAC<span>-Vibe</span></div>
   </div>
-  {% if current_ip %}
-  <div class="header-ip">
-    <span class="dot"></span>{{ current_ip }}
-  </div>
-  {% endif %}
+  <div class="subtitle">WiFi Setup</div>
 </div>
 
-{% if mode == "setup" %}
-<!-- ═══════════════════════════════ SETUP MODE ══════════════════════════ -->
+<!-- Step indicators -->
+<div class="steps">
+  <div class="step active" id="step1"></div>
+  <div class="step" id="step2"></div>
+  <div class="step" id="step3"></div>
+</div>
 
-<div class="content" id="setup-main">
-  <div class="label">Available Networks</div>
+<!-- Main panel — network selection + password -->
+<div id="main-panel">
+  <div class="section-label">Available Networks</div>
 
-  <div class="network-list">
+  <div class="network-list" id="network-list">
     {% if networks %}
       {% for net in networks %}
-      <div class="network-item" onclick="selectNet('{{ net.ssid }}', {{ net.secure|lower }})">
-        <div class="signal-bars">
-          {% set b = 1 if net.signal < 25 else (2 if net.signal < 50 else (3 if net.signal < 75 else 4)) %}
-          <div class="bar {% if b >= 1 %}lit{% endif %}"></div>
-          <div class="bar {% if b >= 2 %}lit{% endif %}"></div>
-          <div class="bar {% if b >= 3 %}lit{% endif %}"></div>
-          <div class="bar {% if b >= 4 %}lit{% endif %}"></div>
+      <div class="network-item" onclick="selectNetwork('{{ net.ssid }}', {{ net.secure|lower }}, {{ net.signal }})">
+        <div class="signal-icon">
+          {% set bars = 1 if net.signal < -80 else (2 if net.signal < -65 else (3 if net.signal < -50 else 4)) %}
+          <div class="bar {% if bars >= 1 %}lit{% endif %}"></div>
+          <div class="bar {% if bars >= 2 %}lit{% endif %}"></div>
+          <div class="bar {% if bars >= 3 %}lit{% endif %}"></div>
+          <div class="bar {% if bars >= 4 %}lit{% endif %}"></div>
         </div>
-        <div class="net-info">
-          <div class="net-ssid">{{ net.ssid }}</div>
-          <div class="net-meta">{{ net.signal }}%{% if not net.secure %} · Open{% endif %}</div>
+        <div class="network-info">
+          <div class="network-ssid">{{ net.ssid }}</div>
+          <div class="network-meta">{{ net.signal }} dBm{% if not net.secure %} · Open network{% endif %}</div>
         </div>
         {% if net.secure %}<div class="lock-icon">🔒</div>{% endif %}
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty">No networks found.<br>Try refreshing.</div>
+      <div class="empty-state">No networks found.<br>Try refreshing.</div>
     {% endif %}
   </div>
 
-  <div class="pw-panel" id="pw-panel">
-    <div class="selected-net">
+  <!-- Password panel — shown after network selection -->
+  <div class="password-panel" id="pw-panel">
+    <div class="selected-network">
       <div class="selected-dot"></div>
-      <div class="selected-ssid" id="sel-ssid">—</div>
+      <div class="selected-ssid" id="selected-ssid-label">—</div>
     </div>
-    <div class="field">
-      <div class="field-label">Password</div>
-      <div class="pw-wrap">
-        <input type="password" id="pw-input" placeholder="WiFi password"
-               autocomplete="current-password" autocorrect="off" autocapitalize="none">
-        <button class="toggle-pw" onclick="togglePw()" type="button">👁</button>
-      </div>
+    <div class="input-label">Password</div>
+    <div class="pw-input-wrap">
+      <input type="password" id="pw-input" placeholder="Enter WiFi password"
+             autocomplete="current-password" autocorrect="off" autocapitalize="none">
+      <button class="toggle-pw" onclick="togglePw()" type="button">👁</button>
     </div>
   </div>
 
-  <button class="btn btn-primary" id="btn-connect" onclick="doConnect()" disabled>
+  <button class="btn-connect" id="btn-connect" onclick="doConnect()" disabled>
     Connect
   </button>
-  <button class="btn btn-secondary" onclick="location.reload()">↻ Refresh</button>
+
+  <button class="btn-refresh" onclick="window.location.reload()">
+    ↻ &nbsp;Refresh Networks
+  </button>
 </div>
 
-<!-- Connecting -->
+<!-- Connecting screen -->
 <div class="status-screen" id="connecting-screen">
   <div class="spinner"></div>
   <div class="status-title">Connecting...</div>
-  <div class="status-msg" id="conn-msg">Verifying credentials</div>
+  <div class="status-msg" id="connecting-msg">Verifying credentials</div>
 </div>
 
-<!-- Success -->
+<!-- Success screen -->
 <div class="status-screen" id="success-screen">
   <span class="status-icon">✅</span>
-  <div class="status-title" style="color:var(--green)">Connected!</div>
-  <div class="status-msg">HVAC-Vibe is online.</div>
-  <div class="ip-chip" id="ip-chip">—</div>
-  <div class="status-msg" style="margin-top:14px">You can close this page.</div>
+  <div class="status-title" style="color: var(--green)">Connected!</div>
+  <div class="status-msg">Your HVAC-Vibe gateway is online.</div>
+  <div class="ip-display" id="ip-display">—</div>
+  <div class="status-msg" style="margin-top:16px">You can close this page.<br>The engine is starting up.</div>
 </div>
 
-<!-- Error -->
+<!-- Error screen -->
 <div class="status-screen" id="error-screen">
   <span class="status-icon">❌</span>
-  <div class="status-title" style="color:var(--red)">Failed</div>
-  <div class="status-msg" id="err-msg">Check your password and try again.</div>
-  <button class="btn btn-secondary" style="margin-top:20px" onclick="resetSetup()">Try Again</button>
+  <div class="status-title" style="color: var(--red)">Failed</div>
+  <div class="status-msg" id="error-msg">Could not connect. Check your password and try again.</div>
+  <button class="btn-connect" style="margin-top:24px; background: var(--surface); border: 1px solid var(--border)"
+          onclick="resetUI()">Try Again</button>
 </div>
-
-{% elif mode == "mgmt" %}
-<!-- ════════════════════════════ MANAGEMENT MODE ════════════════════════ -->
-
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('sensors', this)">Sensors</div>
-  <div class="tab" onclick="switchTab('wifi', this)">WiFi</div>
-</div>
-
-<!-- Sensors tab -->
-<div class="content tab-panel active" id="tab-sensors">
-  <div class="label">Paired Sensors</div>
-
-  <div class="sensor-list">
-    {% if sensors %}
-      {% for s in sensors %}
-      <div class="sensor-card {{ 'connected' if s.connected else 'disconnected' }}"
-           id="card-{{ s.sensor_id }}">
-        <div class="sensor-header">
-          <div>
-            <div class="sensor-name">{{ s.display_name or s.sensor_id }}</div>
-            <div class="sensor-id">{{ s.sensor_id }}</div>
-          </div>
-          <div class="status-badge {{ 'online' if s.connected else 'offline' }}">
-            {{ 'Online' if s.connected else 'Offline' }}
-          </div>
-        </div>
-
-        <div class="sensor-stats">
-          <div class="stat">
-            <div class="stat-label">RMS</div>
-            <div class="stat-value">
-              {% if s.vib_rms %}{{ "%.3f"|format(s.vib_rms) }}g{% else %}—{% endif %}
-            </div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Kurtosis</div>
-            <div class="stat-value">
-              {% if s.kurtosis_x %}{{ "%.1f"|format(s.kurtosis_x) }}{% else %}—{% endif %}
-            </div>
-          </div>
-        </div>
-
-        <div class="sensor-actions">
-          <button class="btn-sm primary" onclick="toggleEdit('{{ s.sensor_id }}')">✏ Edit</button>
-          <button class="btn-sm success" onclick="syncSensor('{{ s.sensor_id }}')"
-                  {% if not s.connected %}disabled title="Sensor offline"{% endif %}>
-            ↑ Sync
-          </button>
-          <button class="btn-sm danger" onclick="removeSensor('{{ s.sensor_id }}')">✕ Remove</button>
-        </div>
-
-        <!-- Edit form -->
-        <div class="edit-form" id="edit-{{ s.sensor_id }}">
-          <div class="field">
-            <div class="field-label">Display Name</div>
-            <input type="text" id="name-{{ s.sensor_id }}"
-                   value="{{ s.display_name or '' }}" placeholder="e.g. Compressor-1">
-          </div>
-          <div class="field">
-            <div class="field-label">Asset Type</div>
-            <input type="text" id="type-{{ s.sensor_id }}"
-                   value="{{ s.asset_type or '' }}" placeholder="e.g. compressor, fan, pump">
-          </div>
-          <div class="field">
-            <div class="field-label">Location</div>
-            <input type="text" id="loc-{{ s.sensor_id }}"
-                   value="{{ s.location or '' }}" placeholder="e.g. Roof Unit 3">
-          </div>
-          <div class="edit-actions">
-            <button class="btn-sm primary" onclick="saveEdit('{{ s.sensor_id }}')">Save</button>
-            <button class="btn-sm" onclick="toggleEdit('{{ s.sensor_id }}')">Cancel</button>
-          </div>
-        </div>
-      </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty">No sensors paired yet.<br>Start hvac-engine to discover sensors.</div>
-    {% endif %}
-  </div>
-</div>
-
-<!-- WiFi tab -->
-<div class="content tab-panel" id="tab-wifi">
-  <div class="label">Current Connection</div>
-  <div class="wifi-current">
-    <div class="wifi-dot"></div>
-    <div>
-      <div class="wifi-label">IP Address</div>
-      <div class="wifi-ip">{{ current_ip or 'Not connected' }}</div>
-    </div>
-  </div>
-
-  <div class="label">Change Network</div>
-  <div class="network-list" id="wifi-net-list">
-    <div class="empty">Loading networks...</div>
-  </div>
-
-  <div class="pw-panel" id="wifi-pw-panel">
-    <div class="selected-net">
-      <div class="selected-dot"></div>
-      <div class="selected-ssid" id="wifi-sel-ssid">—</div>
-    </div>
-    <div class="field">
-      <div class="field-label">New Password</div>
-      <div class="pw-wrap">
-        <input type="password" id="wifi-pw-input" placeholder="WiFi password"
-               autocomplete="current-password" autocorrect="off" autocapitalize="none">
-        <button class="toggle-pw" onclick="toggleWifiPw()" type="button">👁</button>
-      </div>
-    </div>
-  </div>
-
-  <button class="btn btn-primary" id="btn-wifi-connect"
-          onclick="doWifiChange()" disabled style="margin-top:10px">
-    Change Network
-  </button>
-</div>
-
-<div class="exit-row">
-  <button class="btn-exit" onclick="doExit()">⏻ Exit Management Mode</button>
-</div>
-
-<!-- Connecting overlay for wifi change -->
-<div class="status-screen" id="wifi-connecting">
-  <div class="spinner"></div>
-  <div class="status-title">Switching Network...</div>
-  <div class="status-msg" id="wifi-conn-msg">Please wait</div>
-</div>
-
-{% endif %}
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
 
 <script>
-{% if mode == "setup" %}
-/* ── Setup mode JS ── */
-let selSSID = null, selSecure = true;
+  let selectedSSID   = null;
+  let selectedSecure = true;
 
-function selectNet(ssid, secure) {
-  selSSID = ssid; selSecure = secure;
-  document.querySelectorAll('.network-item').forEach(e => e.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
-  document.getElementById('sel-ssid').textContent = ssid;
-  const panel = document.getElementById('pw-panel');
-  panel.classList.add('open');
-  const inp = document.getElementById('pw-input');
-  inp.disabled = !secure;
-  inp.placeholder = secure ? 'WiFi password' : 'No password required';
-  document.getElementById('btn-connect').disabled = false;
-  if (secure) inp.focus();
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
+  function selectNetwork(ssid, secure, signal) {
+    selectedSSID   = ssid;
+    selectedSecure = secure;
 
-function togglePw() {
-  const i = document.getElementById('pw-input');
-  i.type = i.type === 'password' ? 'text' : 'password';
-}
+    // Highlight selected
+    document.querySelectorAll('.network-item').forEach(el => el.classList.remove('selected'));
+    event.currentTarget.classList.add('selected');
 
-async function doConnect() {
-  if (!selSSID) return;
-  const pw = document.getElementById('pw-input').value;
-  if (selSecure && pw.length < 8) { toast('Password must be 8+ characters', 'err'); return; }
-  showScreen('connecting');
-  document.getElementById('conn-msg').textContent = `Connecting to ${selSSID}...`;
-  try {
-    const r = await fetch('/connect', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ ssid: selSSID, password: pw })
-    });
-    const d = await r.json();
-    if (d.success) {
-      document.getElementById('ip-chip').textContent = d.ip;
-      showScreen('success');
+    // Update step indicator
+    document.getElementById('step1').classList.add('done');
+    document.getElementById('step2').classList.add('active');
+
+    // Show password panel
+    document.getElementById('selected-ssid-label').textContent = ssid;
+    const panel = document.getElementById('pw-panel');
+    panel.classList.add('visible');
+
+    const btn = document.getElementById('btn-connect');
+
+    if (!secure) {
+      // Open network — no password needed
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').placeholder = 'No password required';
+      document.getElementById('pw-input').disabled = true;
+      btn.disabled = false;
     } else {
-      document.getElementById('err-msg').textContent =
-        d.message === 'network_not_found' ? `Network "${selSSID}" not found. Try again.` :
-        d.message === 'connection_failed'  ? 'Wrong password or connection failed.' :
-        'Something went wrong.';
-      showScreen('error');
+      document.getElementById('pw-input').disabled = false;
+      document.getElementById('pw-input').placeholder = 'Enter WiFi password';
+      document.getElementById('pw-input').focus();
+      btn.disabled = false;
     }
-  } catch(e) {
-    pollStatus();
-  }
-}
 
-async function pollStatus() {
-  document.getElementById('conn-msg').textContent = 'Switching networks...';
-  for (let i = 0; i < 40; i++) {
-    await sleep(1000);
+    // Scroll to password panel
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function togglePw() {
+    const input = document.getElementById('pw-input');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+
+  async function doConnect() {
+    if (!selectedSSID) return;
+
+    const password = document.getElementById('pw-input').value;
+    if (selectedSecure && password.length < 8) {
+      showToast('Password must be at least 8 characters');
+      return;
+    }
+
+    // Show connecting screen
+    showScreen('connecting');
+    document.getElementById('step2').classList.add('done');
+    document.getElementById('step3').classList.add('active');
+    document.getElementById('connecting-msg').textContent = `Connecting to ${selectedSSID}...`;
+
     try {
-      const r = await fetch('/status', { signal: AbortSignal.timeout(2000) });
-      const d = await r.json();
-      if (d.connected && d.ip) {
-        document.getElementById('ip-chip').textContent = d.ip;
-        showScreen('success'); return;
+      const resp = await fetch('/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssid: selectedSSID, password: password }),
+      });
+
+      const data = await resp.json();
+
+      if (data.success) {
+        document.getElementById('ip-display').textContent = data.ip;
+        document.getElementById('step3').classList.add('done');
+        showScreen('success');
+      } else {
+        document.getElementById('error-msg').textContent =
+          data.message === 'network_not_found'
+            ? `Network "${selectedSSID}" not found. Move closer or try again.`
+            : data.message === 'connection_failed'
+            ? 'Could not connect. Check your password and try again.'
+            : 'Something went wrong. Previous settings restored.';
+        showScreen('error');
       }
-    } catch(e) {}
-  }
-  showScreen('error');
-}
-
-function showScreen(name) {
-  document.getElementById('setup-main').style.display = name === 'main' ? '' : 'none';
-  ['connecting-screen','success-screen','error-screen'].forEach(id => {
-    document.getElementById(id).classList.toggle('show', id === name + '-screen');
-  });
-}
-
-function resetSetup() {
-  selSSID = null;
-  showScreen('main');
-  document.querySelectorAll('.network-item').forEach(e => e.classList.remove('selected'));
-  document.getElementById('pw-panel').classList.remove('open');
-  document.getElementById('pw-input').value = '';
-  document.getElementById('btn-connect').disabled = true;
-}
-
-{% elif mode == "mgmt" %}
-/* ── Management mode JS ── */
-
-function switchTab(name, el) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'wifi') loadNetworks();
-}
-
-function toggleEdit(id) {
-  const form = document.getElementById('edit-' + id);
-  form.classList.toggle('open');
-}
-
-async function saveEdit(id) {
-  const name = document.getElementById('name-' + id).value;
-  const type = document.getElementById('type-' + id).value;
-  const loc  = document.getElementById('loc-'  + id).value;
-  const r = await fetch('/sensors/update', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ sensor_id: id, display_name: name, asset_type: type, location: loc })
-  });
-  const d = await r.json();
-  if (d.success) {
-    document.querySelector(`#card-${id} .sensor-name`).textContent = name || id;
-    document.getElementById('edit-' + id).classList.remove('open');
-    toast('Saved', 'ok');
-  } else {
-    toast('Save failed', 'err');
-  }
-}
-
-async function syncSensor(id) {
-  toast('Syncing to sensor...', 'ok');
-  const r = await fetch('/sensors/sync', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ sensor_id: id })
-  });
-  const d = await r.json();
-  toast(d.success ? '✓ Synced to sensor firmware' : `Sync failed: ${d.error || ''}`,
-        d.success ? 'ok' : 'err');
-}
-
-async function removeSensor(id) {
-  if (!confirm('Remove this sensor?')) return;
-  const r = await fetch('/sensors/remove', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ sensor_id: id })
-  });
-  const d = await r.json();
-  if (d.success) {
-    document.getElementById('card-' + id).style.display = 'none';
-    toast('Sensor removed', 'ok');
-  } else {
-    toast('Remove failed', 'err');
-  }
-}
-
-/* WiFi tab */
-let wifiSelSSID = null, wifiSelSecure = true;
-let networksLoaded = false;
-
-async function loadNetworks() {
-  if (networksLoaded) return;
-  const list = document.getElementById('wifi-net-list');
-  list.innerHTML = '<div class="empty">Scanning...</div>';
-  try {
-    const r = await fetch('/status');
-    // Use cached networks from server
-    const resp = await fetch('/wifi/networks');
-    const nets = await resp.json();
-    renderNetworks(nets);
-    networksLoaded = true;
-  } catch(e) {
-    list.innerHTML = '<div class="empty">Scan failed. Try refreshing.</div>';
-  }
-}
-
-function renderNetworks(nets) {
-  const list = document.getElementById('wifi-net-list');
-  if (!nets.length) { list.innerHTML = '<div class="empty">No networks found.</div>'; return; }
-  list.innerHTML = nets.map(n => {
-    const b = n.signal < 25 ? 1 : n.signal < 50 ? 2 : n.signal < 75 ? 3 : 4;
-    const bars = [1,2,3,4].map(i => `<div class="bar ${i<=b?'lit':''}"></div>`).join('');
-    return `<div class="network-item" onclick="selectWifiNet('${n.ssid}', ${n.secure})">
-      <div class="signal-bars">${bars}</div>
-      <div class="net-info">
-        <div class="net-ssid">${n.ssid}</div>
-        <div class="net-meta">${n.signal}%${!n.secure?' · Open':''}</div>
-      </div>
-      ${n.secure ? '<div class="lock-icon">🔒</div>' : ''}
-    </div>`;
-  }).join('');
-}
-
-function selectWifiNet(ssid, secure) {
-  wifiSelSSID = ssid; wifiSelSecure = secure;
-  document.querySelectorAll('#tab-wifi .network-item').forEach(e => e.classList.remove('selected'));
-  event.currentTarget.classList.add('selected');
-  document.getElementById('wifi-sel-ssid').textContent = ssid;
-  const panel = document.getElementById('wifi-pw-panel');
-  panel.classList.add('open');
-  const inp = document.getElementById('wifi-pw-input');
-  inp.disabled = !secure;
-  inp.placeholder = secure ? 'WiFi password' : 'No password required';
-  document.getElementById('btn-wifi-connect').disabled = false;
-  if (secure) inp.focus();
-}
-
-function toggleWifiPw() {
-  const i = document.getElementById('wifi-pw-input');
-  i.type = i.type === 'password' ? 'text' : 'password';
-}
-
-async function doWifiChange() {
-  if (!wifiSelSSID) return;
-  const pw = document.getElementById('wifi-pw-input').value;
-  if (wifiSelSecure && pw.length < 8) { toast('Password must be 8+ characters', 'err'); return; }
-  showWifiScreen('connecting');
-  document.getElementById('wifi-conn-msg').textContent = `Connecting to ${wifiSelSSID}...`;
-  try {
-    const r = await fetch('/wifi/connect', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ ssid: wifiSelSSID, password: pw })
-    });
-    const d = await r.json();
-    if (d.success) {
-      toast(`Connected: ${d.ip}`, 'ok');
-      showWifiScreen('none');
-      document.querySelector('.wifi-ip').textContent = d.ip;
-      document.querySelector('.header-ip').innerHTML = `<span class="dot"></span>${d.ip}`;
-    } else {
-      toast(`Failed: ${d.message}`, 'err');
-      showWifiScreen('none');
+    } catch (e) {
+      // fetch will fail when Pi switches networks — that's actually success
+      // Poll /status to confirm
+      pollStatus();
     }
-  } catch(e) {
-    toast('Connection attempt in progress...', 'ok');
-    showWifiScreen('none');
   }
-}
 
-function showWifiScreen(name) {
-  document.getElementById('wifi-connecting').classList.toggle('show', name === 'connecting');
-}
+  async function pollStatus() {
+    document.getElementById('connecting-msg').textContent = 'Switching networks...';
+    for (let i = 0; i < 35; i++) {
+      await sleep(1000);
+      try {
+        const resp = await fetch('/status', { signal: AbortSignal.timeout(2000) });
+        const data = await resp.json();
+        if (data.connected && data.ip) {
+          document.getElementById('ip-display').textContent = data.ip;
+          document.getElementById('step3').classList.add('done');
+          showScreen('success');
+          return;
+        }
+      } catch (e) { /* still switching */ }
+    }
+    showScreen('error');
+    document.getElementById('error-msg').textContent =
+      'Connection timed out. Previous WiFi settings restored.';
+  }
 
-async function doExit() {
-  await fetch('/exit', { method: 'POST' });
-  document.body.innerHTML = '<div style="text-align:center;padding:80px 20px;color:#4a6080;font-family:monospace">Management mode closed.<br>You can close this tab.</div>';
-}
+  function showScreen(name) {
+    document.getElementById('main-panel').style.display     = name === 'main'       ? '' : 'none';
+    document.getElementById('connecting-screen').classList.toggle('visible', name === 'connecting');
+    document.getElementById('success-screen').classList.toggle('visible',    name === 'success');
+    document.getElementById('error-screen').classList.toggle('visible',      name === 'error');
+  }
 
-{% endif %}
+  function resetUI() {
+    selectedSSID = null;
+    showScreen('main');
+    document.querySelectorAll('.network-item').forEach(el => el.classList.remove('selected'));
+    document.getElementById('pw-panel').classList.remove('visible');
+    document.getElementById('pw-input').value = '';
+    document.getElementById('btn-connect').disabled = true;
+    ['step1','step2','step3'].forEach(id => {
+      document.getElementById(id).classList.remove('active','done');
+    });
+    document.getElementById('step1').classList.add('active');
+  }
 
-/* ── Shared utilities ── */
-function toast(msg, type) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = `toast show ${type || ''}`;
-  setTimeout(() => t.className = 'toast', 3000);
-}
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 </script>
 </body>
 </html>
