@@ -634,6 +634,25 @@ class SensorSession:
             retain=True,
         )
 
+    async def send_nus_command(self, client, command: str):
+        """
+        Send a NUS (Nordic UART Service) command to the sensor firmware.
+        Used for rename: sends "NAME:Compressor-1\\n" via BLE write.
+        """
+        try:
+            from engine_config import NUS_TX_UUID
+        except ImportError:
+            # Nordic UART Service RX characteristic (write to send to device)
+            NUS_TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+        try:
+            data = (command + "\n").encode("utf-8")
+            await client.write_gatt_char(NUS_TX_UUID, data, response=False)
+            log.info(f"{self.name}: NUS command sent: {command!r}")
+            return True
+        except Exception as e:
+            log.warning(f"{self.name}: NUS write failed: {e}")
+            return False
+
 
 # ── BLE async tasks ───────────────────────────────────────────────────────
 
@@ -649,19 +668,23 @@ async def _connect_and_monitor(address: str, name: str, sensor_id: str,
             log.info(f"Connecting to {name} ({address})...")
             async with BleakClient(address, timeout=config.BLE["connect_timeout"]) as client:
                 log.info(f"Connected: {name}")
+                _register_session(sensor_id, session, client)
                 await client.start_notify(BURST_DATA_UUID, session.on_burst)
                 await client.start_notify(ENV_DATA_UUID,   session.on_env)
                 log.info(f"{name}: subscribed to burst + env")
                 while client.is_connected:
                     await asyncio.sleep(1.0)
 
+            _unregister_session(sensor_id)
             session.publish_disconnected()
             log.warning(f"{name}: disconnected — retrying in {config.BLE['retry_delay']}s")
 
         except asyncio.CancelledError:
+            _unregister_session(sensor_id)
             session.publish_disconnected()
             return
         except Exception as e:
+            _unregister_session(sensor_id)
             session.publish_disconnected()
             log.warning(f"{name}: error {e} — retrying in {config.BLE['retry_delay']}s")
 
@@ -810,6 +833,30 @@ class BLEScanner:
             )
         self._thread.start()
         log.info(f"BLE thread started: {self._thread.name}")
+
+    def start_command_handler(self, config, mqtt_client):
+        """
+        Start MQTT command handler once BLE loop is running.
+        Must be called after start() — waits for loop to be ready.
+        """
+        if config.sim_mode:
+            log.info("Sim mode — command handler uses main thread loop")
+            loop = asyncio.new_event_loop()
+        else:
+            # Wait for BLE loop to start
+            for _ in range(20):
+                if self._loop is not None:
+                    break
+                time.sleep(0.1)
+            loop = self._loop
+
+        if loop is None:
+            log.warning("BLE loop not available — command handler disabled")
+            return
+
+        handler = CommandHandler(config, mqtt_client, loop)
+        handler.start()
+        log.info("Command handler started")
 
     def stop(self):
         self._stop.set()

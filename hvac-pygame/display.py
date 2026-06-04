@@ -26,6 +26,27 @@ from balloon_screen_one import BalloonScreenOne
 
 log = logging.getLogger('display')
 
+# ── Local IP ──────────────────────────────────────────────────
+def _get_local_ip() -> str:
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return ""
+
+_LOCAL_IP = _get_local_ip()   # cached once at startup
+
+def draw_ip_overlay(surf, fonts):
+    """Draw local IP under HVAC-Vibe label — same line as Connected text."""
+    if not _LOCAL_IP:
+        return
+    lbl = fonts["tiny"].render(_LOCAL_IP, True, C_GREY)
+    surf.blit(lbl, (8, 22))
+
 if ON_PI:
     os.environ['SDL_VIDEODRIVER'] = 'offscreen'
 
@@ -548,6 +569,9 @@ def run():
                 draw_single(screen, sensors[idx], fonts)
             else:
                 render(screen, sensors, fonts)
+
+            # IP overlay — shown after WiFi setup completes
+            draw_ip_overlay(screen, fonts)
 
             if ON_PI:
                 flush_to_fb(screen)
