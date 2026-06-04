@@ -89,8 +89,10 @@ class DisplayState:
             s = self._get_or_create(sensor_id, payload.get("name", sensor_id))
             s.connected   = payload.get("connected", False)
             s.name        = payload.get("name", s.name)
-            s.vib_rms     = payload.get("vib_rms",  s.vib_rms)
-            s.vib_peak    = payload.get("vib_peak", s.vib_peak)
+            # MQTT publishes "vector_rms_g" and "vib_peak_g" — map correctly
+            s.vib_rms     = payload.get("vector_rms_g", payload.get("vib_rms",  s.vib_rms))
+            s.vib_peak    = payload.get("vib_peak_g",   payload.get("vib_peak", s.vib_peak))
+            s.dominant_hz = payload.get("dominant_hz",  s.dominant_hz)
             s.alarm       = payload.get("alarm",    s.alarm)
             s.warn        = payload.get("warn",     s.warn)
             s.temp_c      = payload.get("temp_c",   s.temp_c)
@@ -103,9 +105,15 @@ class DisplayState:
     def handle_environment(self, sensor_id: str, payload: dict):
         with self._lock:
             s = self._get_or_create(sensor_id)
-            s.temp_c    = payload.get("temp_c",   s.temp_c)
-            s.humidity  = payload.get("humidity", s.humidity)
-            s.pressure = payload.get("pressure_pa", payload.get("pressure_hpa", s.pressure))
+            s.temp_c   = payload.get("temp_c",    s.temp_c)
+            s.humidity = payload.get("humidity",  s.humidity)
+            # Engine sends pressure_pa (Pascal) and pressure_hpa (hPa)
+            # Use pressure_pa first, fall back to pressure_hpa
+            # Store as hPa for display
+            if "pressure_pa" in payload:
+                s.pressure = round(payload["pressure_pa"] )
+            elif "pressure_hpa" in payload:
+                s.pressure = round(payload["pressure_hpa"]*100)
         self._notify()
 
     def handle_fft(self, sensor_id: str, payload: dict):
@@ -126,9 +134,12 @@ class DisplayState:
     def handle_features(self, sensor_id: str, payload: dict):
         with self._lock:
             s = self._get_or_create(sensor_id)
-            x = payload.get("x", {})
-            s.dominant_hz = x.get("dominant_hz", s.dominant_hz)
-        # No notify — features don't drive UI directly
+            # MQTT sends dominant_hz as flat field, not nested under axis
+            s.vib_rms     = payload.get("vector_rms_g", s.vib_rms)
+            s.dominant_hz = payload.get("dominant_hz",  s.dominant_hz)
+            s.alarm       = payload.get("alarm", s.alarm)
+            s.warn        = payload.get("warn",  s.warn)
+        self._notify()  # features DO drive UI — notify on update
 
     def handle_alert(self, sensor_id: str, payload: dict):
         with self._lock:
