@@ -118,6 +118,10 @@ class EngineConfig:
         # sensors: { "sensor_id": { "name": "...", "mac": "..." } }
         self.sensors: dict = merged.get("sensors", {})
 
+        # thread_sensors: { "ipv6_addr": "sensor_id" }
+        # Maps Thread IPv6 source address to a stable sensor_id.
+        self.THREAD_SENSORS: dict = merged.get("thread_sensors", {})
+
         log.info(f"gateway_id={self.gateway_id}  sim={self.sim_mode}")
         # BLE settings — attach to instance for easy access
         self.BLE = BLE

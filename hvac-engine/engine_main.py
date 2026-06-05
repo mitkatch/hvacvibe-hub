@@ -52,8 +52,8 @@ def main():
     from engine_store import store
     store.init(config.db_path)
 
-    # Start BLE scanner — discovers sensors, pushes data to processor
-    from engine_ble import ble_scanner
+    # Start Thread scanner — receives CoAP UDP from Thread sensors
+    from engine_thread import thread_scanner as ble_scanner
     ble_scanner.start(config, store, mqtt_client)
 
     # Start gateway heartbeat — publishes Pi health every 30s

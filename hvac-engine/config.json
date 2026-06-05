@@ -12,5 +12,8 @@
       "name": "Compressor-1",
       "mac":  "AA:BB:CC:DD:EE:01"
     }
-  }
+  },
+"thread_sensors": {
+  "fd54:b06a:fe40:1:603b:9690:f851:ec4d": "hvac-vibe-2be618"
+}
 }
