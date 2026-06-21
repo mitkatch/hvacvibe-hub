@@ -5,12 +5,12 @@ Subscribes to hvac/{gateway_id}/# and routes messages
 to display_state handlers.
 
 Topic routing:
-  .../status              → state.handle_status()
-  .../environment         → state.handle_environment()
-  .../vibration/fft       → state.handle_fft()
-  .../vibration/features  → state.handle_features()
-  .../alert               → state.handle_alert()
-  .../gateway/status      → ignored (gateway health, not sensor)
+  .../status                → state.handle_status()
+  .../environment           → state.handle_environment()
+  .../vibration/fft_stats   → state.handle_fft_stats()
+  .../vibration/features    → state.handle_features()
+  .../alert                 → state.handle_alert()
+  .../gateway/status        → ignored (gateway health, not sensor)
 """
 
 import json
@@ -117,8 +117,8 @@ class DisplayMQTT:
             state.handle_status(sensor_id, payload)
         elif topic_type == "environment":
             state.handle_environment(sensor_id, payload)
-        elif topic_type == "vibration/fft":
-            state.handle_fft(sensor_id, payload)
+        elif topic_type == "vibration/fft_stats":
+            state.handle_fft_stats(sensor_id, payload)
         elif topic_type == "vibration/features":
             state.handle_features(sensor_id, payload)
         elif topic_type == "alert":

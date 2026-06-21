@@ -5,15 +5,35 @@ Drop-in replacement for engine_ble.py.
 Listens on UDP port 5683 for CoAP NON POST packets from sensor nodes.
 Reuses all packet parsing and MQTT publishing from engine_ble.py.
 
-Packet format (from firmware thread.c):
-  CoAP NON POST → /telemetry
-  Payload: burst_header_t (8B) + time_stats_t (36B) + fft_stats_t (60B) + optional env (8B)
-  type = PKT_TYPE_THREAD_TELEMETRY (0x10)
+Packet format (firmware analysis.h / thread.c):
+  The firmware sends 3 separate CoAP NON POST packets per burst:
+
+    PKT_TYPE_TIME_STATS (0x01): burst_header_t (10B) + time_stats_t (36B)
+    PKT_TYPE_FFT_STATS  (0x04): burst_header_t (10B) + fft_stats_t  (60B)
+    PKT_TYPE_ENV        (0x03): burst_header_t (10B) + env           (8B)
+
+  All packets in a burst share the same (seq, timestamp_ms).
+  This receiver reassembles them by (sensor_id, seq) before publishing.
+
+  burst_header_t wire layout (little-endian, 10 bytes):
+    [0]     uint8   type          PKT_TYPE_*
+    [1]     uint8   reserved
+    [2..3]  uint16  seq           monotonic burst counter
+    [4..5]  uint16  sample_count  samples analysed
+    [6..9]  uint32  timestamp_ms  k_uptime_get_32()
 
 Sensor identification:
-  Sensors are identified by their Thread IPv6 source address.
-  Address is mapped to sensor_id via THREAD_SENSORS in config.json.
-  Unknown sensors are auto-registered as "thread-<addr_suffix>".
+  Source address is the sensor's Thread RLOC (not ML-EID), so the IID
+  encodes the RLOC16 rather than the EUI-64.  Sensor IDs are therefore
+  derived from the RLOC16 suffix (e.g. "thread-9801") and will change
+  on each rejoin.  To map stable names, configure a seq-based or
+  topic-level alias in the backend, or extend burst_header_t with the
+  EUI-64 in a future firmware revision.
+
+config.json format (optional name override by RLOC suffix):
+  "thread_sensors": {
+    "9801": "hvac-vibe-basement"
+  }
 
 Interface (matches engine_ble.py BLEScanner):
   thread_scanner.start(config, store, mqtt_client)
@@ -29,17 +49,22 @@ import time
 log = logging.getLogger("engine_thread")
 
 # ── CoAP / packet constants ───────────────────────────────────────────────
-COAP_PORT            = 5683
-PKT_TYPE_THREAD_TEL  = 0x10   # thread.c PKT_TYPE_THREAD_TELEMETRY
+COAP_PORT = 5683
 
-# Offsets inside CoAP payload (after CoAP header is stripped)
-HEADER_SIZE          = 8      # burst_header_t
-TIME_STATS_SIZE      = 36     # time_stats_t
-FFT_STATS_SIZE       = 60     # fft_stats_t
-ENV_SIZE             = 8      # optional env block
+# burst_header_t: type(1) + reserved(1) + seq(2) + sample_count(2) + timestamp_ms(4)
+HEADER_SIZE = 10
+HEADER_FMT  = "<BBHHI"
 
-PAYLOAD_MIN          = HEADER_SIZE + TIME_STATS_SIZE + FFT_STATS_SIZE   # 104 bytes
-PAYLOAD_WITH_ENV     = PAYLOAD_MIN + ENV_SIZE                            # 112 bytes
+PKT_TYPE_TIME_STATS = 0x01
+PKT_TYPE_ENV        = 0x03
+PKT_TYPE_FFT_STATS  = 0x04
+
+TIME_STATS_SIZE = 36
+FFT_STATS_SIZE  = 60
+ENV_SIZE        = 8
+
+# Incomplete bursts are discarded after this many seconds
+BURST_TIMEOUT_S = 2.0
 
 # ── Reuse all parsing from engine_ble ────────────────────────────────────
 from engine_ble import (
@@ -47,22 +72,29 @@ from engine_ble import (
     _parse_time_stats,
     _parse_fft_stats,
     _parse_env,
-    PKT_TYPE_TIME_STATS,
-    PKT_TYPE_FFT_STATS,
-    PKT_TYPE_ENV,
 )
 
-import math
+
+def _rloc16_from_ipv6(addr: str) -> str:
+    """
+    Extract the RLOC16 suffix from a Thread RLOC IPv6 address.
+
+    Thread RLOC IID format: 0000:00ff:fe00:<rloc16>
+    e.g. fd42:46fb:fcc2:f867:0:ff:fe00:9801  ->  "9801"
+
+    Used as a fallback sensor identifier when no name map is configured.
+    """
+    try:
+        import ipaddress
+        ip = ipaddress.IPv6Address(addr)
+        # RLOC16 is the last 2 bytes of the 16-byte address
+        return f"{ip.packed[14]:02x}{ip.packed[15]:02x}"
+    except Exception:
+        return addr.replace(":", "")[-4:].lower()
 
 
-def _sensor_id_from_addr(addr: str) -> str:
-    """
-    Derive a sensor_id from a Thread IPv6 address.
-    Uses last 4 hex chars of the address as suffix.
-    e.g. fd54:b06a:fe40:1:603b:9690:f851:ec4d → thread-ec4d
-    """
-    suffix = addr.replace(":", "")[-4:].lower()
-    return f"thread-{suffix}"
+def _sensor_id_from_rloc16(rloc16: str) -> str:
+    return f"thread-{rloc16}"
 
 
 def _strip_coap_header(data: bytes) -> bytes | None:
@@ -77,48 +109,130 @@ def _strip_coap_header(data: bytes) -> bytes | None:
     return data[marker + 1:]
 
 
-def _parse_thread_telemetry(payload: bytes) -> tuple[dict, dict, dict | None] | None:
+def _parse_packet(payload: bytes) -> dict | None:
     """
-    Parse the combined Thread telemetry payload:
-      burst_header_t (8B) + time_stats_t (36B) + fft_stats_t (60B) [+ env (8B)]
+    Parse one CoAP payload (a single burst packet of any type).
 
-    Returns (time_stats, fft_stats, env_or_None) or None on error.
+    Returns a dict with keys: type, seq, sample_count, timestamp_ms,
+    plus one of: time_stats, fft_stats, env.
+    Returns None on any parse error.
     """
-    if len(payload) < PAYLOAD_MIN:
-        log.warning(f"Payload too short: {len(payload)} bytes (need {PAYLOAD_MIN})")
+    if len(payload) < HEADER_SIZE:
+        log.warning(f"Payload too short for header: {len(payload)} bytes")
         return None
 
-    # Parse burst header
-    pkt_type, _reserved, seq, sample_count, chunk_index = struct.unpack_from(
-        "<BBHHh", payload, 0
+    pkt_type, _reserved, seq, sample_count, timestamp_ms = struct.unpack_from(
+        HEADER_FMT, payload, 0
     )
+    body = payload[HEADER_SIZE:]
 
-    if pkt_type != PKT_TYPE_THREAD_TEL:
-        log.warning(f"Unexpected pkt_type=0x{pkt_type:02x} (expected 0x10)")
+    result = {
+        "type":         pkt_type,
+        "seq":          seq,
+        "sample_count": sample_count,
+        "timestamp_ms": timestamp_ms,
+    }
+
+    if pkt_type == PKT_TYPE_TIME_STATS:
+        if len(body) < TIME_STATS_SIZE:
+            log.warning(f"TIME_STATS body too short: {len(body)} bytes")
+            return None
+        ts = _parse_time_stats(body[:TIME_STATS_SIZE])
+        if not ts:
+            return None
+        ts["seq"]          = seq
+        ts["timestamp_ms"] = timestamp_ms
+        result["time_stats"] = ts
+
+    elif pkt_type == PKT_TYPE_FFT_STATS:
+        if len(body) < FFT_STATS_SIZE:
+            log.warning(f"FFT_STATS body too short: {len(body)} bytes")
+            return None
+        fs = _parse_fft_stats(body[:FFT_STATS_SIZE])
+        if not fs:
+            return None
+        fs["seq"] = seq
+        result["fft_stats"] = fs
+
+    elif pkt_type == PKT_TYPE_ENV:
+        if len(body) < ENV_SIZE:
+            log.warning(f"ENV body too short: {len(body)} bytes")
+            return None
+        result["env"] = _parse_env(body[:ENV_SIZE])
+
+    else:
+        log.warning(f"Unknown pkt_type=0x{pkt_type:02x} — dropping")
         return None
 
-    # Parse time_stats
-    ts_payload = payload[HEADER_SIZE : HEADER_SIZE + TIME_STATS_SIZE]
-    time_stats = _parse_time_stats(ts_payload)
-    if not time_stats:
-        return None
-    time_stats["seq"] = seq
+    return result
 
-    # Parse fft_stats
-    fft_offset = HEADER_SIZE + TIME_STATS_SIZE
-    fft_payload = payload[fft_offset : fft_offset + FFT_STATS_SIZE]
-    fft_stats = _parse_fft_stats(fft_payload)
-    if not fft_stats:
-        return None
-    fft_stats["seq"] = seq
 
-    # Parse optional env block
-    env = None
-    if len(payload) >= PAYLOAD_WITH_ENV:
-        env_payload = payload[PAYLOAD_MIN : PAYLOAD_MIN + ENV_SIZE]
-        env = _parse_env(env_payload)
+# ── Burst reassembly ──────────────────────────────────────────────────────
+#
+# The firmware sends 3 separate CoAP packets per burst, all with the same
+# seq and timestamp_ms.  We buffer them by (sensor_id, seq) and publish
+# as soon as TIME_STATS + FFT_STATS have both arrived.  ENV is optional.
 
-    return time_stats, fft_stats, env
+_bursts: dict[tuple, dict] = {}
+_bursts_lock = threading.Lock()
+
+
+def _assemble_and_maybe_publish(sensor_id: str, parsed: dict, session) -> bool:
+    """
+    Route one parsed packet.
+
+    ENV (0x03) is published immediately — it arrives after TIME+FFT and is
+    independent of vibration data, so buffering it alongside the burst would
+    cause it to be silently dropped (the burst entry is deleted as soon as
+    TIME_STATS+FFT_STATS complete, before ENV arrives).
+
+    TIME_STATS (0x01) and FFT_STATS (0x04) are buffered by (sensor_id, seq)
+    and published together as soon as both halves arrive.
+    """
+    # ENV is independent — publish directly without entering the burst buffer
+    if parsed["type"] == PKT_TYPE_ENV:
+        env = parsed.get("env")
+        if env:
+            session._last_env = env
+            session._publish_environment()
+        return True
+
+    key = (sensor_id, parsed["seq"])
+
+    with _bursts_lock:
+        # Lazy cleanup of timed-out incomplete bursts
+        now   = time.monotonic()
+        stale = [k for k, v in _bursts.items()
+                 if now - v["arrived"] > BURST_TIMEOUT_S]
+        for k in stale:
+            log.debug(f"Discarding incomplete burst key={k}")
+            del _bursts[k]
+
+        if key not in _bursts:
+            _bursts[key] = {"arrived": now}
+
+        burst    = _bursts[key]
+        pkt_type = parsed["type"]
+
+        if pkt_type == PKT_TYPE_TIME_STATS:
+            burst["time_stats"]   = parsed["time_stats"]
+            burst["timestamp_ms"] = parsed["timestamp_ms"]
+        elif pkt_type == PKT_TYPE_FFT_STATS:
+            burst["fft_stats"] = parsed["fft_stats"]
+
+        if "time_stats" not in burst or "fft_stats" not in burst:
+            return False
+
+        # Both halves present — extract and remove before releasing lock
+        time_stats = burst["time_stats"]
+        fft_stats  = burst["fft_stats"]
+        del _bursts[key]
+
+    # Publish outside the lock
+    session._publish_time_stats(time_stats)
+    session._publish_fft_stats(fft_stats)
+
+    return True
 
 
 # ── Session registry ──────────────────────────────────────────────────────
@@ -127,13 +241,12 @@ _sessions: dict[str, SensorSession] = {}
 _sessions_lock = threading.Lock()
 
 
-def _get_or_create_session(sensor_id: str, addr: str,
+def _get_or_create_session(sensor_id: str, rloc16: str, src_addr: str,
                             config, store, mqtt_client) -> SensorSession:
     with _sessions_lock:
         if sensor_id not in _sessions:
-            # Use IPv6 address as the "address" field (replaces MAC)
             session = SensorSession(
-                address=addr,
+                address=src_addr,
                 name=sensor_id,
                 sensor_id=sensor_id,
                 config=config,
@@ -141,8 +254,7 @@ def _get_or_create_session(sensor_id: str, addr: str,
                 mqtt_client=mqtt_client,
             )
             _sessions[sensor_id] = session
-            log.info(f"New Thread sensor: {sensor_id} @ {addr}")
-            # Publish connected status
+            log.info(f"New Thread sensor: {sensor_id} rloc16={rloc16} addr={src_addr}")
             session._publish_status(connected=True)
         return _sessions[sensor_id]
 
@@ -152,11 +264,11 @@ def _get_or_create_session(sensor_id: str, addr: str,
 def _udp_listener(config, store, mqtt_client, stop_event: threading.Event):
     """
     Main UDP receive loop.
-    Binds to :: (all interfaces) on port 5683 to receive Thread multicast CoAP.
+    Binds to :: (all interfaces) on port 5683.
     """
     sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.settimeout(1.0)   # allows checking stop_event
+    sock.settimeout(1.0)
 
     try:
         sock.bind(('::', COAP_PORT))
@@ -165,10 +277,10 @@ def _udp_listener(config, store, mqtt_client, stop_event: threading.Event):
         log.error(f"Failed to bind UDP port {COAP_PORT}: {e}")
         return
 
-    # Check config for sensor address map
+    # Optional: RLOC16-suffix → sensor_id name map from config
     sensor_map: dict[str, str] = getattr(config, 'THREAD_SENSORS', {})
     if sensor_map:
-        log.info(f"Thread sensor map: {sensor_map}")
+        log.info(f"Thread sensor map (RLOC16-based): {sensor_map}")
 
     while not stop_event.is_set():
         try:
@@ -179,37 +291,32 @@ def _udp_listener(config, store, mqtt_client, stop_event: threading.Event):
             if '%' in src_addr:
                 src_addr = src_addr.split('%')[0]
 
-            # Resolve sensor_id
-            sensor_id = sensor_map.get(src_addr) or _sensor_id_from_addr(src_addr)
+            # Only process mesh-local (fd prefix) — skip link-local MLE traffic
+            if src_addr.startswith('fe80'):
+                continue
 
-            # Strip CoAP header to get raw payload
+            rloc16    = _rloc16_from_ipv6(src_addr)
+            sensor_id = sensor_map.get(rloc16) or _sensor_id_from_rloc16(rloc16)
+
             payload = _strip_coap_header(data)
             if payload is None:
                 log.warning(f"No CoAP payload marker from {src_addr}")
                 continue
 
-            result = _parse_thread_telemetry(payload)
-            if result is None:
+            parsed = _parse_packet(payload)
+            if parsed is None:
                 continue
 
-            time_stats, fft_stats, env = result
-
             session = _get_or_create_session(
-                sensor_id, src_addr, config, store, mqtt_client
+                sensor_id, rloc16, src_addr, config, store, mqtt_client
             )
 
-            # Feed into the same publish pipeline as BLE
-            session._publish_time_stats(time_stats)
-            session._publish_fft_stats(fft_stats)
-
-            if env:
-                session._last_env = env
-                session._publish_environment()
-
-            log.debug(f"{sensor_id}: seq={time_stats['seq']} "
-                      f"rms=[{time_stats['rms_x_mg']},{time_stats['rms_y_mg']},"
-                      f"{time_stats['rms_z_mg']}]mg "
-                      f"dom_x={fft_stats['x']['dominant_hz']}Hz")
+            published = _assemble_and_maybe_publish(sensor_id, parsed, session)
+            if published:
+                log.debug(
+                    f"{sensor_id} rloc={rloc16}: seq={parsed['seq']} "
+                    f"ts={parsed['timestamp_ms']}ms burst complete"
+                )
 
         except socket.timeout:
             continue

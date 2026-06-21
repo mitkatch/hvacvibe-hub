@@ -16,58 +16,77 @@ log = logging.getLogger("display_state")
 
 
 @dataclass
-class FFTData:
-    frequencies: list = field(default_factory=list)
-    amplitudes:  list = field(default_factory=list)
+class FFTAxisStats:
+    dominant_hz:  float = 0.0
+    dominant_mag: float = 0.0
+    total_power:  float = 0.0
+    bpfo_energy:  float = 0.0
+    bpfi_energy:  float = 0.0
+    bsf_energy:   float = 0.0
+    ftf_energy:   float = 0.0
+    noise_floor:  float = 0.0
+    snr_bpfo:     float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "dominant_hz":  self.dominant_hz,
+            "dominant_mag": self.dominant_mag,
+            "total_power":  self.total_power,
+            "bpfo_energy":  self.bpfo_energy,
+            "bpfi_energy":  self.bpfi_energy,
+            "bsf_energy":   self.bsf_energy,
+            "ftf_energy":   self.ftf_energy,
+            "noise_floor":  self.noise_floor,
+            "snr_bpfo":     self.snr_bpfo,
+        }
 
 
 @dataclass
 class SensorLiveState:
-    sensor_id:   str
-    name:        str        = "Unknown"
-    connected:   bool       = False
-    vib_rms:     float      = 0.0
-    vib_peak:    float      = 0.0
-    dominant_hz: float      = 0.0
-    alarm:       bool       = False
-    warn:        bool       = False
-    temp_c:      float      = 0.0
-    humidity:    float      = 0.0
-    pressure:    int        = 0
-    battery:     int        = 0
-    rssi:        int        = -99
-    last_seen:   float      = 0.0
-    alert_level: str        = "ok"   # "ok" | "warn" | "alarm"
+    sensor_id:    str
+    name:         str   = "Unknown"
+    connected:    bool  = False
+    vib_rms:      float = 0.0
+    vib_peak:     float = 0.0
+    dominant_hz:  float = 0.0
+    alarm:        bool  = False
+    warn:         bool  = False
+    temp_c:       float = 0.0
+    humidity:     float = 0.0
+    pressure:     int   = 0
+    battery:      int   = 0
+    rssi:         int   = -99
+    last_seen:    float = 0.0
+    alert_level:  str   = "ok"   # "ok" | "warn" | "alarm"
+    max_snr_bpfo: float = 0.0
 
-    # Latest FFT per axis — updated on each vibration/fft message
-    fft_x: FFTData = field(default_factory=FFTData)
-    fft_y: FFTData = field(default_factory=FFTData)
-    fft_z: FFTData = field(default_factory=FFTData)
+    # FFT fault stats per axis — updated on each vibration/fft_stats message
+    fft_x: FFTAxisStats = field(default_factory=FFTAxisStats)
+    fft_y: FFTAxisStats = field(default_factory=FFTAxisStats)
+    fft_z: FFTAxisStats = field(default_factory=FFTAxisStats)
 
     def to_dict(self) -> dict:
         return {
-            "sensor_id":   self.sensor_id,
-            "name":        self.name,
-            "connected":   self.connected,
-            "vib_rms":     self.vib_rms,
-            "vib_peak":    self.vib_peak,
-            "dominant_hz": self.dominant_hz,
-            "alarm":       self.alarm,
-            "warn":        self.warn,
-            "temp_c":      self.temp_c,
-            "humidity":    self.humidity,
-            "pressure":    self.pressure,
-            "battery":     self.battery,
-            "rssi":        self.rssi,
-            "last_seen":   self.last_seen,
-            "alert_level": self.alert_level,
+            "sensor_id":    self.sensor_id,
+            "name":         self.name,
+            "connected":    self.connected,
+            "vib_rms":      self.vib_rms,
+            "vib_peak":     self.vib_peak,
+            "dominant_hz":  self.dominant_hz,
+            "alarm":        self.alarm,
+            "warn":         self.warn,
+            "temp_c":       self.temp_c,
+            "humidity":     self.humidity,
+            "pressure":     self.pressure,
+            "battery":      self.battery,
+            "rssi":         self.rssi,
+            "last_seen":    self.last_seen,
+            "alert_level":  self.alert_level,
+            "max_snr_bpfo": self.max_snr_bpfo,
             "fft": {
-                "x": {"frequencies": self.fft_x.frequencies,
-                       "amplitudes":  self.fft_x.amplitudes},
-                "y": {"frequencies": self.fft_y.frequencies,
-                       "amplitudes":  self.fft_y.amplitudes},
-                "z": {"frequencies": self.fft_z.frequencies,
-                       "amplitudes":  self.fft_z.amplitudes},
+                "x": self.fft_x.to_dict(),
+                "y": self.fft_y.to_dict(),
+                "z": self.fft_z.to_dict(),
             },
         }
 
@@ -107,28 +126,37 @@ class DisplayState:
             s = self._get_or_create(sensor_id)
             s.temp_c   = payload.get("temp_c",    s.temp_c)
             s.humidity = payload.get("humidity",  s.humidity)
-            # Engine sends pressure_pa (Pascal) and pressure_hpa (hPa)
-            # Use pressure_pa first, fall back to pressure_hpa
-            # Store as hPa for display
             if "pressure_pa" in payload:
-                s.pressure = round(payload["pressure_pa"] )
+                s.pressure = round(payload["pressure_pa"])
             elif "pressure_hpa" in payload:
-                s.pressure = round(payload["pressure_hpa"]*100)
+                s.pressure = round(payload["pressure_hpa"] * 100)
         self._notify()
 
-    def handle_fft(self, sensor_id: str, payload: dict):
-        axis = payload.get("axis", "x")
-        freqs = payload.get("frequencies", [])
-        amps  = payload.get("amplitudes",  [])
+    def handle_fft_stats(self, sensor_id: str, payload: dict):
         with self._lock:
             s = self._get_or_create(sensor_id)
-            fft = FFTData(frequencies=freqs, amplitudes=amps)
-            if axis == "x":
-                s.fft_x = fft
-            elif axis == "y":
-                s.fft_y = fft
-            elif axis == "z":
-                s.fft_z = fft
+            s.fft_x = FFTAxisStats(
+                dominant_hz  = payload.get("x_dominant_hz",  0.0),
+                dominant_mag = payload.get("x_dominant_mag", 0.0),
+                total_power  = payload.get("x_total_power",  0.0),
+                bpfo_energy  = payload.get("x_bpfo_energy",  0.0),
+                bpfi_energy  = payload.get("x_bpfi_energy",  0.0),
+                bsf_energy   = payload.get("x_bsf_energy",   0.0),
+                ftf_energy   = payload.get("x_ftf_energy",   0.0),
+                noise_floor  = payload.get("x_noise_floor",  0.0),
+                snr_bpfo     = payload.get("x_snr_bpfo",     0.0),
+            )
+            s.fft_y = FFTAxisStats(
+                dominant_hz = payload.get("y_dominant_hz",  0.0),
+                bpfo_energy = payload.get("y_bpfo_energy",  0.0),
+                snr_bpfo    = payload.get("y_snr_bpfo",     0.0),
+            )
+            s.fft_z = FFTAxisStats(
+                dominant_hz = payload.get("z_dominant_hz",  0.0),
+                bpfo_energy = payload.get("z_bpfo_energy",  0.0),
+                snr_bpfo    = payload.get("z_snr_bpfo",     0.0),
+            )
+            s.max_snr_bpfo = payload.get("max_snr_bpfo", s.max_snr_bpfo)
         self._notify()
 
     def handle_features(self, sensor_id: str, payload: dict):

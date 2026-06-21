@@ -71,7 +71,7 @@ def get_available_dates(sensor_id: str) -> list[str]:
         return []
     try:
         cur = _conn.execute(
-            "SELECT DISTINCT date FROM history WHERE sensor_id=? ORDER BY date DESC",
+            "SELECT DISTINCT date FROM history_time WHERE sensor_id=? ORDER BY date DESC",
             (sensor_id,),
         )
         return [row["date"] for row in cur.fetchall()]
