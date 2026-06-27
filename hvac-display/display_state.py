@@ -58,12 +58,16 @@ class SensorLiveState:
     rssi:         int   = -99
     last_seen:    float = 0.0
     alert_level:  str   = "ok"   # "ok" | "warn" | "alarm"
-    max_snr_bpfo: float = 0.0
+    max_snr_bpfo:  float = 0.0
 
     # FFT fault stats per axis — updated on each vibration/fft_stats message
     fft_x: FFTAxisStats = field(default_factory=FFTAxisStats)
     fft_y: FFTAxisStats = field(default_factory=FFTAxisStats)
     fft_z: FFTAxisStats = field(default_factory=FFTAxisStats)
+
+    # X-axis frequency spectrum — updated on each vibration/spectrum message
+    spectrum_freq: list = field(default_factory=list)
+    spectrum_amp:  list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -87,6 +91,10 @@ class SensorLiveState:
                 "x": self.fft_x.to_dict(),
                 "y": self.fft_y.to_dict(),
                 "z": self.fft_z.to_dict(),
+            },
+            "spectrum": {
+                "freq_hz":   self.spectrum_freq,
+                "amplitude": self.spectrum_amp,
             },
         }
 
@@ -129,7 +137,7 @@ class DisplayState:
             if "pressure_pa" in payload:
                 s.pressure = round(payload["pressure_pa"])
             elif "pressure_hpa" in payload:
-                s.pressure = round(payload["pressure_hpa"] * 100)
+                s.pressure = round(payload["pressure_hpa"])
         self._notify()
 
     def handle_fft_stats(self, sensor_id: str, payload: dict):
@@ -168,6 +176,13 @@ class DisplayState:
             s.alarm       = payload.get("alarm", s.alarm)
             s.warn        = payload.get("warn",  s.warn)
         self._notify()  # features DO drive UI — notify on update
+
+    def handle_spectrum(self, sensor_id: str, payload: dict):
+        with self._lock:
+            s = self._get_or_create(sensor_id)
+            s.spectrum_freq = payload.get("freq_hz",   [])
+            s.spectrum_amp  = payload.get("amplitude", [])
+        self._notify()
 
     def handle_alert(self, sensor_id: str, payload: dict):
         with self._lock:

@@ -170,10 +170,10 @@ def _parse_env(payload: bytes) -> dict | None:
 
     temp_raw, hum_raw, press_pa = struct.unpack_from("<hHI", payload, 0)
     return {
-        "temp_c":      round(temp_raw / 100.0, 2),
-        "humidity":    round(hum_raw  / 100.0, 2),
-        "pressure_pa": press_pa,
-        "pressure_hpa": round(press_pa / 100.0, 1),
+        "temp_c":       round(temp_raw / 100.0, 2),
+        "humidity":     round(hum_raw  / 100.0, 2),
+        "pressure_pa":  press_pa,         # firmware sends hPa despite the field name
+        "pressure_hpa": float(press_pa),  # same value — already hPa, no conversion needed
     }
 
 

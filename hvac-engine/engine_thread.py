@@ -51,17 +51,20 @@ log = logging.getLogger("engine_thread")
 # ── CoAP / packet constants ───────────────────────────────────────────────
 COAP_PORT = 5683
 
-# burst_header_t: type(1) + reserved(1) + seq(2) + sample_count(2) + timestamp_ms(4)
-HEADER_SIZE = 10
-HEADER_FMT  = "<BBHHI"
+# burst_header_t: type(1) + reserved(1) + seq(2) + sample_count(2) + timestamp_ms(4) + name(16)
+HEADER_SIZE = 26
+HEADER_FMT  = "<BBHHI16s"
 
 PKT_TYPE_TIME_STATS = 0x01
 PKT_TYPE_ENV        = 0x03
 PKT_TYPE_FFT_STATS  = 0x04
+PKT_TYPE_SPECTRUM   = 0x05
 
-TIME_STATS_SIZE = 36
-FFT_STATS_SIZE  = 60
-ENV_SIZE        = 8
+TIME_STATS_SIZE  = 36
+FFT_STATS_SIZE   = 60
+ENV_SIZE         = 8
+SPECTRUM_BINS    = 76    # bins 1-76 → 3.1-237 Hz at 3.125 Hz/bin (1600 Hz / 512 pt FFT)
+SPECTRUM_HZ_PER_BIN = 1600 / 512   # 3.125 Hz
 
 # Incomplete bursts are discarded after this many seconds
 BURST_TIMEOUT_S = 2.0
@@ -102,8 +105,19 @@ def _strip_coap_header(data: bytes) -> bytes | None:
     Strip CoAP fixed header + token + options to get the raw payload.
     CoAP payload starts after the 0xFF payload marker byte.
     Returns None if no payload marker found.
+
+    Must search only from after the fixed 4-byte CoAP header + token bytes.
+    Bytes 2-3 of the fixed header are the message ID (big-endian), which can
+    contain 0xFF when the ID counter is in the 0xFF00-0xFFFF range.  Searching
+    from byte 0 finds that false 0xFF and returns the wrong slice.
     """
-    marker = data.find(b'\xff')
+    if len(data) < 4:
+        return None
+    tkl = data[0] & 0x0F          # token length from low nibble of first byte
+    options_start = 4 + tkl       # skip fixed header + token
+    if len(data) <= options_start:
+        return None
+    marker = data.find(b'\xff', options_start)
     if marker < 0:
         return None
     return data[marker + 1:]
@@ -121,16 +135,19 @@ def _parse_packet(payload: bytes) -> dict | None:
         log.warning(f"Payload too short for header: {len(payload)} bytes")
         return None
 
-    pkt_type, _reserved, seq, sample_count, timestamp_ms = struct.unpack_from(
+    pkt_type, _reserved, seq, sample_count, timestamp_ms, name_raw = struct.unpack_from(
         HEADER_FMT, payload, 0
     )
     body = payload[HEADER_SIZE:]
+
+    sensor_name = name_raw.rstrip(b'\x00').decode('ascii', errors='replace').strip()
 
     result = {
         "type":         pkt_type,
         "seq":          seq,
         "sample_count": sample_count,
         "timestamp_ms": timestamp_ms,
+        "sensor_name":  sensor_name,
     }
 
     if pkt_type == PKT_TYPE_TIME_STATS:
@@ -159,6 +176,18 @@ def _parse_packet(payload: bytes) -> dict | None:
             log.warning(f"ENV body too short: {len(body)} bytes")
             return None
         result["env"] = _parse_env(body[:ENV_SIZE])
+
+    elif pkt_type == PKT_TYPE_SPECTRUM:
+        if len(body) < SPECTRUM_BINS:
+            log.warning(f"SPECTRUM body too short: {len(body)} bytes")
+            return None
+        raw = body[:SPECTRUM_BINS]
+        # Firmware sends uint8 magnitudes normalised to peak (peak=255, DC=0)
+        # Reconstruct frequency axis: bin k → k * 1600/512 Hz
+        result["spectrum"] = {
+            "freq_hz":   [round(k * SPECTRUM_HZ_PER_BIN, 1) for k in range(SPECTRUM_BINS)],
+            "amplitude": [b / 255.0 for b in raw],
+        }
 
     else:
         log.warning(f"Unknown pkt_type=0x{pkt_type:02x} — dropping")
@@ -189,12 +218,29 @@ def _assemble_and_maybe_publish(sensor_id: str, parsed: dict, session) -> bool:
     TIME_STATS (0x01) and FFT_STATS (0x04) are buffered by (sensor_id, seq)
     and published together as soon as both halves arrive.
     """
-    # ENV is independent — publish directly without entering the burst buffer
+    # ENV and SPECTRUM are independent — publish directly, no burst buffering.
+    # Both arrive after TIME_STATS+FFT_STATS so the burst entry is already gone.
     if parsed["type"] == PKT_TYPE_ENV:
         env = parsed.get("env")
         if env:
             session._last_env = env
             session._publish_environment()
+        return True
+
+    if parsed["type"] == PKT_TYPE_SPECTRUM:
+        spec = parsed.get("spectrum")
+        if spec:
+            import time as _time
+            session._mqtt.publish(
+                topic=session._config.topic(session.sensor_id, "vibration", "spectrum"),
+                payload={
+                    "ts":        int(_time.time()),
+                    "sensor_id": session.sensor_id,
+                    "freq_hz":   spec["freq_hz"],
+                    "amplitude": spec["amplitude"],
+                },
+                qos=0,
+            )
         return True
 
     key = (sensor_id, parsed["seq"])
@@ -295,8 +341,7 @@ def _udp_listener(config, store, mqtt_client, stop_event: threading.Event):
             if src_addr.startswith('fe80'):
                 continue
 
-            rloc16    = _rloc16_from_ipv6(src_addr)
-            sensor_id = sensor_map.get(rloc16) or _sensor_id_from_rloc16(rloc16)
+            rloc16 = _rloc16_from_ipv6(src_addr)
 
             payload = _strip_coap_header(data)
             if payload is None:
@@ -306,6 +351,11 @@ def _udp_listener(config, store, mqtt_client, stop_event: threading.Event):
             parsed = _parse_packet(payload)
             if parsed is None:
                 continue
+
+            # Prefer name embedded in packet; fall back to config map, then RLOC16
+            sensor_id = (parsed.get("sensor_name")
+                         or sensor_map.get(rloc16)
+                         or _sensor_id_from_rloc16(rloc16))
 
             session = _get_or_create_session(
                 sensor_id, rloc16, src_addr, config, store, mqtt_client

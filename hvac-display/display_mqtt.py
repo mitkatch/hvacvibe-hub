@@ -8,6 +8,7 @@ Topic routing:
   .../status                → state.handle_status()
   .../environment           → state.handle_environment()
   .../vibration/fft_stats   → state.handle_fft_stats()
+  .../vibration/spectrum    → state.handle_spectrum()
   .../vibration/features    → state.handle_features()
   .../alert                 → state.handle_alert()
   .../gateway/status        → ignored (gateway health, not sensor)
@@ -119,6 +120,8 @@ class DisplayMQTT:
             state.handle_environment(sensor_id, payload)
         elif topic_type == "vibration/fft_stats":
             state.handle_fft_stats(sensor_id, payload)
+        elif topic_type == "vibration/spectrum":
+            state.handle_spectrum(sensor_id, payload)
         elif topic_type == "vibration/features":
             state.handle_features(sensor_id, payload)
         elif topic_type == "alert":
