@@ -27,7 +27,7 @@
     .vib { color: #f0c040; } .temp { color: #f0c040; } .hum { color: #4ab4f0; } .pres { color: #7a9ab8; }
     .chart-wrap { padding: 10px 14px 6px; }
     .chart-header { font-size: 10px; color: #5a7a9a; margin-bottom: 6px; letter-spacing: 1px; display: flex; justify-content: space-between; }
-    .canvas-box { position: relative; height: 240px; }
+    .canvas-box { position: relative; height: 270px; }
     canvas { position: absolute; top:0; left:0; width:100%; height:100%; }
     canvas#overlay { pointer-events: none; }
     .status-bar { padding: 4px 12px; font-size: 10px; color: #3a5a7a; border-top: 1px solid #1e3048; display: flex; gap: 16px; align-items: center; }
@@ -97,6 +97,7 @@ for (let m = 0; m < MINUTES; m++)
   xLabels.push(m % 60 === 0 ? String(Math.floor(m/60)).padStart(2,'0')+':00' : '');
 
 let chart, ws, reconnTimer, currentSensorId, nowMinute = 0, yMax = 1.0;
+let lastSpectrum = null;   // {freq_hz: [...], amplitude: [...]} from WebSocket
 
 // ── Helpers ───────────────────────────────────────────────────
 function tick() {
@@ -168,6 +169,7 @@ function initChart() {
           }
         }
       },
+      layout: { padding: { right: 52, top: 22 } },
       scales: {
         x: {
           ticks: {
@@ -276,6 +278,79 @@ function drawOverlay() {
     ctx.fillText(curVal.toFixed(3) + 'g', nowX + 6, nowY - 5);
   }
   ctx.restore();
+
+  // ── Spectrum overlay (amber) ──────────────────────────────────
+  const spec = lastSpectrum;
+  const hasSpec = spec && spec.freq_hz && spec.freq_hz.length > 1;
+
+  const fMax   = hasSpec ? spec.freq_hz[spec.freq_hz.length - 1] : 250;
+  const plotW  = ca.right - ca.left;
+  const plotH  = ca.bottom - ca.top;
+
+  function xFreq(f)  { return ca.left + (f / fMax) * plotW; }
+  function yAmp(a)   { return ca.bottom - a * plotH; }   // amplitude 0-1 → plot height
+
+  // Right amplitude axis (amber)
+  ctx.save();
+  ctx.fillStyle   = '#e09030';
+  ctx.strokeStyle = 'rgba(224,144,48,0.3)';
+  ctx.lineWidth   = 1;
+  ctx.font        = '9px monospace';
+  ctx.textAlign   = 'left';
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(a => {
+    const y = yAmp(a);
+    ctx.fillText(a.toFixed(2), ca.right + 6, y + 3);
+    ctx.beginPath(); ctx.moveTo(ca.right, y); ctx.lineTo(ca.right + 4, y); ctx.stroke();
+  });
+  // Top frequency axis (amber)
+  ctx.textAlign   = 'center';
+  ctx.fillStyle   = '#e09030';
+  ctx.strokeStyle = 'rgba(224,144,48,0.3)';
+  [0, 50, 100, 150, 200, 250].forEach(f => {
+    const x = xFreq(f);
+    ctx.fillText(f + 'Hz', x, ca.top - 6);
+    ctx.beginPath(); ctx.moveTo(x, ca.top); ctx.lineTo(x, ca.top + 4); ctx.stroke();
+  });
+
+  ctx.fillStyle = '#7a6040';
+  ctx.textAlign = 'left';
+  ctx.fillText('amp', ca.right + 6, ca.top - 3);
+
+  if (hasSpec) {
+    // Spectrum curve
+    ctx.strokeStyle = '#e09030';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    spec.freq_hz.forEach((f, i) => {
+      const x = xFreq(f);
+      const y = yAmp(spec.amplitude[i]);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Dominant peak dot + label
+    let domIdx = 1;
+    for (let i = 2; i < spec.amplitude.length; i++) {
+      if (spec.amplitude[i] > spec.amplitude[domIdx]) domIdx = i;
+    }
+    if (spec.amplitude[domIdx] > 0.05) {
+      const dx = xFreq(spec.freq_hz[domIdx]);
+      const dy = yAmp(spec.amplitude[domIdx]);
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle   = '#e09030';
+      ctx.textAlign   = 'left';
+      ctx.font        = '10px monospace';
+      ctx.fillText(spec.freq_hz[domIdx].toFixed(1) + 'Hz', dx + 6, dy - 5);
+    }
+  } else {
+    // No spectrum yet — draw placeholder text
+    ctx.fillStyle = '#4a3820';
+    ctx.font      = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('no spectrum', ca.left + plotW / 2, ca.top + plotH / 2 + 4);
+  }
+  ctx.restore();
 }
 
 // ── Data ──────────────────────────────────────────────────────
@@ -350,6 +425,11 @@ function applyState(s) {
   if (s.vib_rms > 0) {
     dayRms[nowMinute] = parseFloat(s.vib_rms.toFixed(3));
     refreshChart();
+  }
+
+  if (s.spectrum && s.spectrum.freq_hz && s.spectrum.freq_hz.length > 0) {
+    lastSpectrum = s.spectrum;
+    requestAnimationFrame(drawOverlay);
   }
 
   if (!currentSensorId) {
